@@ -8,29 +8,39 @@ import BottomNav from '../../components/BottomNav/BottomNav';
 import ProductCard from '../../components/ProductCard/ProductCard';
 import CampaignCarousel from '../../components/CampaignCarousel/CampaignCarousel';
 import { AppContext } from '../../context/AppContext';
-import { collectionStore, subscribeToLocalData } from '../../services/localDataService';
-import { customerProduct } from '../../services/sharedCatalog';
+import { collectionStore } from '../../services/localDataService';
 import { promotionApplies } from '../../services/promotionScope';
+import { getStoreProducts } from '../../services/catalogApi';
+import { adaptStoreProductList } from '../../services/catalogAdapter';
 import './StorePage.css';
 
 const StorePage = () => {
   const { storeId } = useParams();
   const navigate = useNavigate();
-  const { userCity } = useContext(AppContext);
-  const [, refresh] = useState(0);
+  const { userCity, catalogProducts } = useContext(AppContext);
+  const [storeProducts, setStoreProducts] = useState([]);
 
-  useEffect(() => subscribeToLocalData(({ key }) => {
-    if (!key || ['local:stores', 'local:products', 'local:inventory'].includes(key)) refresh((value) => value + 1);
-  }), []);
+  useEffect(() => {
+    let ignore = false;
+    getStoreProducts(storeId, { status: 'ACTIVE' })
+      .then((payload) => {
+        if (!ignore) setStoreProducts(adaptStoreProductList(payload || []).map((item) => ({ ...item, storeId: item.storeId || storeId })));
+      })
+      .catch(() => {
+        if (!ignore) setStoreProducts([]);
+      });
+    return () => { ignore = true; };
+  }, [storeId]);
 
   const store = collectionStore.list('stores').find((item) => item.id === storeId);
-  const inventory = collectionStore.list('inventory');
   const banners = store ? collectionStore.list('banners').filter((item)=>item.status==='Active'&&item.image&&promotionApplies(item,{location:store.location,store:store.name})) : [];
   const coupons = store ? collectionStore.list('coupons').filter((item)=>item.status==='Active'&&promotionApplies(item,{location:store.location,store:store.name})) : [];
-  const products = store ? collectionStore.list('products')
-    .filter((item) => item.status !== 'Inactive' && item.active !== false)
-    .filter((item) => item.store === store.id || item.store === store.name)
-    .map((item) => customerProduct(item, inventory)) : [];
+  const mappedProductIds = new Set(storeProducts.filter((item) => item.storeId === storeId && item.status !== 'INACTIVE' && item.available !== false).map((item) => item.productId));
+  const mappedProducts = storeProducts.filter((item) => item.product).map((item) => ({ ...item.product, storeId: item.storeId }));
+  const products = store ? [
+    ...mappedProducts,
+    ...catalogProducts.filter((item) => mappedProductIds.has(item.productId)),
+  ].filter((product, index, items) => product.active !== false && items.findIndex((item) => item.productId === product.productId) === index) : [];
 
   if (!store) return <Box className="store-page"><Header /><Box className="store-empty"><Typography variant="h6">Store not found</Typography><Button onClick={() => navigate('/home')}>Return home</Button></Box><BottomNav /></Box>;
 

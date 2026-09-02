@@ -83,14 +83,14 @@ const CartDrawer = () => {
                         <Box className="qty-selector">
                           <button
                             className="qty-btn"
-                            onClick={() => updateQuantity(item.title, -1, item.weight)}
+                          onClick={() => updateQuantity(item.productId, item.variantId, -1)}
                           >
                             -
                           </button>
                           <span className="qty-count">{item.quantity}</span>
                           <button
                             className="qty-btn"
-                            onClick={() => updateQuantity(item.title, 1, item.weight)}
+                          onClick={() => updateQuantity(item.productId, item.variantId, 1)}
                           >
                             +
                           </button>

@@ -9,17 +9,23 @@ import './ProductCard.css';
 
 const ProductCard = ({ title, weight, price, image, ...details }) => {
   const navigate = useNavigate();
-  const { cartItems, addToCart, updateQuantity, setSelectedProduct, wishlistItems, toggleWishlist, formatCurrency } = useContext(AppContext);
+  const { cartItems, addToCart, updateQuantity, setSelectedProduct, wishlistItems, toggleWishlist, formatCurrency, sameCatalogItem } = useContext(AppContext);
   const cardImage = image || pickleJarImg;
+  const selectedVariant = details.selectedVariant || details.variants?.[0] || {};
+  const productId = details.productId || details.id || selectedVariant.productId;
+  const variantId = details.variantId || selectedVariant.variantId || selectedVariant.id;
 
-  const cartItem = cartItems.find((item) => item.title === title && item.weight === weight);
+  const cartItem = cartItems.find((item) => sameCatalogItem(item, { productId, variantId }));
   const quantity = cartItem ? cartItem.quantity : 0;
-  const isWishlisted = wishlistItems.some((item) => item.title === title);
-  const product = { ...details, title, name:details.name || title, weight, price: Number(price), image: cardImage };
+  const isWishlisted = wishlistItems.some((item) => sameCatalogItem(item, { productId, variantId }));
+  const product = { ...details, id: productId, productId, variantId, selectedVariant, title, name:details.name || title, weight, price: Number(selectedVariant.price ?? price), image: cardImage };
 
   const handleCardClick = () => {
-    setSelectedProduct({
+    const resolvedProduct = {
       ...details,
+      id: productId,
+      productId,
+      variantId,
       title: title || 'Gongora Pickle',
       subtitle: `Authentic Andhra ${title || 'Gongura Pickle'} | Traditional Recipe`,
       description: details.description || `Freshly prepared ${title || 'Gongura Pickle'} made using handpicked ingredients, traditional Andhra spices, and cold-pressed oil. Rich in flavor with the perfect balance of tanginess and spice, bringing the authentic taste of homemade Andhra cuisine to your dining table.`,
@@ -36,23 +42,25 @@ const ProductCard = ({ title, weight, price, image, ...details }) => {
       weights: details.weights || [weight || '250g'],
       image: cardImage,
       gallery: details.gallery || [],
-    });
-    navigate('/product-info');
+    };
+    setSelectedProduct(resolvedProduct);
+    const targetId = resolvedProduct.productId || resolvedProduct.id || title;
+    navigate(`/product-info/${encodeURIComponent(targetId)}`);
   };
 
   const handleAdd = (e) => {
     e.stopPropagation();
-    addToCart({ id:details.id, title, weight, price, image: cardImage });
+    addToCart(product);
   };
 
   const handleIncrement = (e) => {
     e.stopPropagation();
-    addToCart({ id:details.id, title, weight, price, image: cardImage });
+    addToCart(product);
   };
 
   const handleDecrement = (e) => {
     e.stopPropagation();
-    updateQuantity(title, -1, weight);
+    updateQuantity(productId, variantId, -1);
   };
 
   return (
@@ -76,8 +84,8 @@ const ProductCard = ({ title, weight, price, image, ...details }) => {
             <Typography className="product-price">{formatCurrency(price)}</Typography>
           </Box>
           {quantity === 0 ? (
-            <Button variant="contained" className="add-btn" disabled={details.outOfStock} onClick={handleAdd}>
-              {details.outOfStock ? 'OUT' : 'ADD'}
+            <Button variant="contained" className="add-btn" disabled={details.active === false || !productId || !variantId} onClick={handleAdd}>
+              {details.active === false ? 'OUT' : 'ADD'}
             </Button>
           ) : (
             <Box className="qty-control-box">

@@ -1,4 +1,4 @@
-import { useState, useContext } from 'react';
+import { useState, useContext, useEffect } from 'react';
 import { Box, Typography, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Rating } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import SearchIcon from '@mui/icons-material/Search';
@@ -6,61 +6,103 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import ScaleOutlinedIcon from '@mui/icons-material/ScaleOutlined';
 import LaunchOutlinedIcon from '@mui/icons-material/LaunchOutlined';
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
-import Inventory2OutlinedIcon from '@mui/icons-material/Inventory2Outlined';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { AppContext } from '../../context/AppContext';
 import pickleJarImg from '../../assets/images/pickel-removebg-preview.png';
-import mangoPickleImg from '../../assets/images/mango_pickle_jar.png';
-import lemonPickleImg from '../../assets/images/lemon_pickle_jar.png';
-import garlicPickleImg from '../../assets/images/garlic_pickle_jar.png';
 import ProductCard from '../../components/ProductCard/ProductCard';
 import { collectionStore } from '../../services/localDataService';
+import { getProduct, getProductVariants, getProductImages } from '../../services/catalogApi';
+import { adaptProduct, adaptVariant } from '../../services/catalogAdapter';
+import { dummyCatalogEnabled, getDummyProduct, getDummyProductImages, getDummyProductVariants } from '../../services/dummyCatalog';
 import './ProductInfo.css';
 
 const validWebUrl = (value) => { try { const parsed = new URL(value); return ['http:','https:'].includes(parsed.protocol) ? parsed.href : ''; } catch { return ''; } };
 const youtubeEmbedUrl = (url) => { const safe=validWebUrl(url);if(!safe)return '';const parsed=new URL(safe);const id=parsed.hostname.includes('youtu.be')?parsed.pathname.slice(1):parsed.searchParams.get('v')||(parsed.pathname.includes('/embed/')?parsed.pathname.split('/embed/')[1]:'');return id?`https://www.youtube.com/embed/${encodeURIComponent(id)}`:safe; };
 const parseVariants = (product) => {
-  if (Array.isArray(product.variants)) return product.variants.map((item) => typeof item === 'string' ? { label:item,price:Number(product.price),stock:Number(product.stock ?? 1) } : { ...item,label:item.label || item.size || item.weight || item.name });
-  if (product.variants) return String(product.variants).split('\n').map((line) => line.trim()).filter(Boolean).map((line) => { const [label,sku,price,stock]=line.split('|').map((value)=>value.trim());return {label,sku,price:Number(price||product.price),stock:stock===undefined||stock===''?Number(product.stock??1):Number(stock)}; });
-  return (product.weights || [product.weight || '250g']).map((label) => ({ label,price:Number(product.price),stock:Number(product.stock ?? 1) }));
+  if (Array.isArray(product.variants)) return product.variants.map((item) => ({ ...item,variantId:item.variantId || item.id,label:item.label || item.size || item.weight || item.name }));
+  return [];
 };
 
 const ProductInfo = () => {
   const navigate = useNavigate();
-  const { selectedProduct, addToCart, updateQuantity, openCart, cartCount, cartItems, isLoggedIn, formatCurrency } = useContext(AppContext);
+  const { productId } = useParams();
+  const { selectedProduct, addToCart, updateQuantity, openCart, cartCount, cartItems, isLoggedIn, formatCurrency, catalogProducts, sameCatalogItem } = useContext(AppContext);
   const [imageIndex, setImageIndex] = useState(0);
   const [activeLink, setActiveLink] = useState(null);
+  const [catalogProduct, setCatalogProduct] = useState(null);
+  const [productLoading, setProductLoading] = useState(false);
+  const [productError, setProductError] = useState(null);
 
-  const product = selectedProduct || {
-    title: 'Gongora Pickle',
-    subtitle: 'Authentic Andhra Gongura Pickle | Traditional Recipe',
-    description:
-      'Freshly prepared Gongura Pickle made using handpicked gongura leaves, traditional Andhra spices, and cold-pressed oil. Rich in flavor with the perfect balance of tanginess and spice, bringing the authentic taste of homemade Andhra cuisine to your dining table.',
-    highlights: [
-      'Made with fresh handpicked gongura leaves',
-      'Authentic Andhra-style recipe',
-      'Traditional spices and cold-pressed oil',
-      'No artificial colors or preservatives',
-      'Homemade taste and aroma',
-      'Hygienically prepared and packed',
-    ],
-    aboutSource:
-      'Our Gongura Pickle is prepared using carefully selected fresh gongura leaves sourced from trusted local farms in Andhra Pradesh. The leaves are cleaned, processed, and blended with premium spices following traditional homemade methods.\n\nEach batch is prepared under hygienic conditions to preserve its authentic taste, freshness, and nutritional value. We use quality ingredients and traditional recipes to ensure every jar delivers the true essence of Andhra-style Gongura Pickle.',
-    price: 159,
-    weights: ['250g', '500g', '1kg'],
+  useEffect(() => {
+    const targetId = productId || selectedProduct?.productId || selectedProduct?.id || selectedProduct?.sku;
+    if (!targetId) return;
+    let ignore = false;
+    const loadProduct = async () => {
+      await Promise.resolve();
+      if (ignore) return;
+      setProductLoading(true);
+      setProductError(null);
+      const [productResponse, variantsResponse, imagesResponse] = await Promise.all([
+      getProduct(targetId),
+      getProductVariants(targetId),
+      getProductImages(targetId),
+      ]);
+        if (ignore) return;
+        const baseProduct = adaptProduct(productResponse || {});
+        const availableVariants = (Array.isArray(variantsResponse) ? variantsResponse : []).map((variant) => adaptVariant(variant, baseProduct));
+        const availableImages = Array.isArray(imagesResponse) ? imagesResponse.map((image) => image.url || image.imageUrl || image.path).filter(Boolean) : [];
+        const mergedProduct = {
+          ...baseProduct,
+          variants: availableVariants.length ? availableVariants : baseProduct.variants || [],
+          gallery: availableImages.length ? availableImages : baseProduct.gallery || [],
+          image: availableImages[0] || baseProduct.image || pickleJarImg,
+          weights: (availableVariants.length ? availableVariants.map((variant) => variant.label || variant.weight || variant.name) : baseProduct.weights || [baseProduct.weight || '500g']).filter(Boolean),
+        };
+        setCatalogProduct(mergedProduct);
+    };
+    loadProduct()
+      .catch((error) => {
+        if (ignore) return;
+        if (dummyCatalogEnabled()) {
+          const fallbackProduct = getDummyProduct(targetId);
+          if (fallbackProduct) {
+            const baseProduct = adaptProduct(fallbackProduct);
+            const availableVariants = getDummyProductVariants(targetId).map((variant) => adaptVariant(variant, baseProduct));
+            const availableImages = getDummyProductImages(targetId).map((image) => image.url || image.imageUrl || image.path).filter(Boolean);
+            setCatalogProduct({
+              ...baseProduct,
+              variants: availableVariants.length ? availableVariants : baseProduct.variants || [],
+              gallery: availableImages.length ? availableImages : baseProduct.gallery || [],
+              image: availableImages[0] || baseProduct.image || pickleJarImg,
+              weights: (availableVariants.length ? availableVariants.map((variant) => variant.label || variant.weight || variant.name) : baseProduct.weights || [baseProduct.weight || '500g']).filter(Boolean),
+            });
+            return;
+          }
+        }
+        setProductError(error.message || 'The product could not be loaded.');
+        console.warn('Catalog product detail request failed:', error);
+      })
+      .finally(() => {
+        if (!ignore) setProductLoading(false);
+      });
+    return () => { ignore = true; };
+  }, [productId, selectedProduct]);
+
+  const product = catalogProduct || {
+    title: productLoading ? 'Loading product' : 'Product unavailable',
+    subtitle: productError || 'Catalog product details are not available.',
+    description: '',
     image: pickleJarImg,
+    variants: [],
   };
   const variantOptions = parseVariants(product).filter((variant) => variant.label);
-  const [selectedWeight, setSelectedWeight] = useState(variantOptions[0]?.label || product.weight || '250g');
-  const selectedVariant = variantOptions.find((variant) => variant.label === selectedWeight) || variantOptions[0];
-  const availableStock = Number(selectedVariant?.stock ?? product.stock ?? 0);
-  const isOutOfStock = product.outOfStock || availableStock <= 0;
+  const [selectedVariantId, setSelectedVariantId] = useState('');
+  const effectiveVariantId = variantOptions.some((variant) => (variant.variantId || variant.id) === selectedVariantId) ? selectedVariantId : variantOptions[0]?.variantId || variantOptions[0]?.id || '';
+  const selectedVariant = variantOptions.find((variant) => (variant.variantId || variant.id) === effectiveVariantId) || variantOptions[0];
+  const selectedWeight = selectedVariant?.label || selectedVariant?.weight || product.weight || '';
+  const isOutOfStock = product.active === false || selectedVariant?.active === false || !selectedVariant;
 
-  const bestSellers = [
-    { title: 'Avakaya Pickle', weight: '500g', price: '199', image: mangoPickleImg },
-    { title: 'Lemon Pickle', weight: '500g', price: '189', image: lemonPickleImg },
-    { title: 'Garlic Pickle', weight: '500g', price: '199', image: garlicPickleImg },
-  ];
+  const bestSellers = catalogProducts.filter((item) => item.productId !== product.productId).slice(0, 3);
   const productImages = [product.image || pickleJarImg, ...(product.gallery || [])].filter((image, index, values) => image && values.indexOf(image) === index);
   const externalLinks = [
     { label: 'Website', url: product.websiteUrl },
@@ -78,7 +120,7 @@ const ProductInfo = () => {
 
   const itemTotal = cartItems.reduce((acc, item) => acc + item.price * item.quantity, 0);
 
-  const cartItem = cartItems.find((item) => item.title === product.title && item.weight === (selectedVariant?.label || selectedWeight));
+  const cartItem = cartItems.find((item) => sameCatalogItem(item, { productId: product.productId, variantId: selectedVariant?.variantId || selectedVariant?.id }));
   const productQuantity = cartItem ? cartItem.quantity : 0;
 
   const handleViewCart = () => {
@@ -91,10 +133,14 @@ const ProductInfo = () => {
 
   const handleAddProduct = () => {
     addToCart({
+      ...product,
+      productId: product.productId || product.id,
+      variantId: selectedVariant?.variantId || selectedVariant?.id,
+      selectedVariant,
       title: product.title,
-      weight: selectedVariant?.label || selectedWeight,
+      weight: selectedWeight,
       variantSku: selectedVariant?.sku,
-      price: Number(selectedVariant?.price || product.price),
+      price: Number(selectedVariant?.price ?? 0),
       image: product.image,
     });
   };
@@ -135,8 +181,8 @@ const ProductInfo = () => {
               <Button
                 key={idx}
                 className={`weight-chip ${selectedWeight === variant.label ? 'selected' : ''}`}
-                onClick={() => setSelectedWeight(variant.label)}
-                disabled={Number(variant.stock) <= 0}
+                onClick={() => setSelectedVariantId(variant.variantId || variant.id)}
+                disabled={variant.active === false}
               >
                 {variant.label}{Number(variant.price) !== Number(product.price) ? ` · ${formatCurrency(variant.price)}` : ''}
               </Button>
@@ -148,7 +194,7 @@ const ProductInfo = () => {
             {product.description ||
               'Freshly prepared Pickle made using handpicked ingredients, traditional Andhra spices, and cold-pressed oil.'}
           </Typography>
-          <Box className={`stock-status ${isOutOfStock ? 'out' : ''}`}><Inventory2OutlinedIcon fontSize="small" /><Typography>{isOutOfStock ? 'Out of stock' : `In stock · ${availableStock} available`}</Typography></Box>
+          <Box className={`availability-status ${isOutOfStock ? 'out' : ''}`}><Typography>{isOutOfStock ? 'Unavailable' : 'Available'}</Typography></Box>
 
           <Box className="info-block"><Typography className="info-block-heading">Ingredients</Typography><Typography>{product.ingredients || 'Fresh produce, traditional spices, cold-pressed oil and salt.'}</Typography></Box>
           <Box className="info-block"><Typography className="info-block-heading">Specifications</Typography><Box className="specification-list">{specifications.map((specification) => { const [label,...value]=specification.split(':');return <Box key={specification}><Typography>{label}</Typography><Typography>{value.join(':').trim() || '-'}</Typography></Box>; })}</Box></Box>
@@ -191,10 +237,7 @@ const ProductInfo = () => {
               {bestSellers.map((item, idx) => (
                 <ProductCard
                   key={idx}
-                  title={item.title}
-                  weight={item.weight}
-                  price={item.price}
-                  image={item.image}
+                  {...item}
                 />
               ))}
             </Box>
@@ -225,14 +268,14 @@ const ProductInfo = () => {
           <Box className="sticky-qty-selector">
             <button
               className="sticky-qty-btn"
-              onClick={() => updateQuantity(product.title, -1, selectedVariant?.label || selectedWeight)}
+              onClick={() => updateQuantity(product.productId, selectedVariant?.variantId || selectedVariant?.id, -1)}
             >
               -
             </button>
             <span className="sticky-qty-count">{productQuantity}</span>
             <button
               className="sticky-qty-btn"
-              onClick={() => updateQuantity(product.title, 1, selectedVariant?.label || selectedWeight)}
+              onClick={() => updateQuantity(product.productId, selectedVariant?.variantId || selectedVariant?.id, 1)}
             >
               +
             </button>

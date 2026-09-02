@@ -27,6 +27,8 @@ const OrderDetailViewPage = () => {
     price: storedOrder.price ?? storedOrder.total,
     date: storedOrder.date || new Date(storedOrder.createdAt).toLocaleString(),
     image: storedOrder.image || storedOrder.items?.[0]?.image || pickleJarImg,
+    productId: storedOrder.productId || storedOrder.items?.[0]?.productId,
+    variantId: storedOrder.variantId || storedOrder.items?.[0]?.variantId,
   } : null;
 
   const youMayAlsoLike = [
@@ -76,6 +78,8 @@ const OrderDetailViewPage = () => {
               onClick={() =>
                 addToCart({
                   id: order.title,
+                  productId: order.productId,
+                  variantId: order.variantId,
                   title: order.title,
                   weight: order.weight,
                   price: Number(order.price),

@@ -8,6 +8,8 @@ import TermsAndConditons from "../../components/TermsAndConditions/TermsAndCondi
 import SmsDisclaimer from "../../components/SmsDisclaimer/SmsDisclaimer";
 import { authStore } from '../../services/localDataService';
 import { AppContext } from '../../context/AppContext';
+import { orgAccessService } from '../../services/orgAccessService';
+import { customerProfileService } from '../../services/customerProfileService';
 
 const Login = () => {
   const navigate = useNavigate();
@@ -55,7 +57,14 @@ const Login = () => {
 
   const handleEmailLogin = async () => {
     setSubmitError(''); setIsSubmitting(true);
-    try { const result=await authStore.emailLogin(email,password); login(result.user,result.token); navigate(result.isNewUser ? '/language' : '/home', result.isNewUser ? { state: { onboarding: true } } : undefined); }
+    try {
+      const result = await orgAccessService.login(email, password);
+      localStorage.setItem('authToken', result.token);
+      let profile = null;
+      try { profile = await customerProfileService.me(); } catch (error) { if (error.status !== 404) throw error; }
+      login({ ...result.user, ...profile }, result.token);
+      navigate(profile ? '/home' : '/language', profile ? undefined : { state: { onboarding: true } });
+    }
     catch (requestError) { setSubmitError(requestError.message); }
     finally { setIsSubmitting(false); }
   };
@@ -151,7 +160,7 @@ const Login = () => {
             >
               {isSubmitting ? 'Sending OTP...' : 'Get OTP'}
             </Button>
-            </> : <Box sx={{ display:'grid',gap:2,my:3 }}><TextField label="Email Address" type="email" value={email} onChange={(event) => setEmail(event.target.value)} /><TextField label="Password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} /><Button variant="contained" disabled={isSubmitting} onClick={handleEmailLogin}>{isSubmitting ? 'Signing in...' : 'Login with Email'}</Button></Box>}
+            </> : <Box sx={{ display:'grid',gap:2,my:3 }}><TextField label="Username" type="text" value={email} onChange={(event) => setEmail(event.target.value)} /><TextField label="Password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} /><Button variant="contained" disabled={isSubmitting} onClick={handleEmailLogin}>{isSubmitting ? 'Signing in...' : 'Login with Username'}</Button></Box>}
             {submitError && <Typography role="alert" sx={{ color: '#b91c1c', mb: 1 }}>{submitError}</Typography>}
             <Button type="button" onClick={() => { setLoginMode(loginMode === 'mobile' ? 'email' : 'mobile'); setSubmitError(''); }} fullWidth>{loginMode === 'mobile' ? 'Use Email Login' : 'Use Mobile Login'}</Button>
             <Typography sx={{ textAlign:'center',my:1 }}>Or continue with</Typography>

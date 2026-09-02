@@ -13,18 +13,14 @@ import { hasCompleteProfile } from '../../utils/profileCompletion';
 
 const CartPage = () => {
   const navigate = useNavigate();
-  const { cartItems, updateQuantity, removeFromCart, deliveryAddress, saveItemForLater, savedForLater, restoreSavedItem, formatCurrency, user, addresses } = useContext(AppContext);
+  const { cartItems, updateQuantity, removeFromCart, deliveryAddress, saveItemForLater, savedForLater, restoreSavedItem, formatCurrency, user, addresses, catalogProducts, catalogItemKey } = useContext(AppContext);
   const goToCheckout = () => navigate(hasCompleteProfile(user, addresses) ? '/checkout' : '/profile', { state: { completeProfile: true, returnTo: '/checkout' } });
 
   const itemTotal = cartItems.reduce((acc, item) => acc + item.price * item.quantity, 0);
   const handlingFee = cartItems.length > 0 ? 5 : 0;
   const grandTotal = itemTotal + handlingFee;
 
-  const youMayAlsoLike = [
-    { title: 'Mango Pickle', weight: '500g', price: '199' },
-    { title: 'Lemon Pickle', weight: '500g', price: '199' },
-    { title: 'Garlic Pickle', weight: '500g', price: '199' },
-  ];
+  const youMayAlsoLike = catalogProducts.filter((product) => !cartItems.some((item) => item.productId === product.productId)).slice(0, 3);
 
   return (
     <Box className="cart-page-wrapper">
@@ -78,21 +74,21 @@ const CartPage = () => {
                   <Box className="slot-item-info">
                     <Typography className="slot-item-title">{item.title}</Typography>
                     <Typography className="slot-item-weight">{item.weight}</Typography>
-                    <Box sx={{ display: 'flex', gap: 1 }}><Button size="small" onClick={() => saveItemForLater(item)} sx={{ p: 0, minWidth: 0, textTransform: 'none' }}>Save for later</Button><Button size="small" color="error" onClick={() => removeFromCart(item.title, item.weight)} sx={{ p: 0, minWidth: 0, textTransform: 'none' }}>Remove</Button></Box>
+                    <Box sx={{ display: 'flex', gap: 1 }}><Button size="small" onClick={() => saveItemForLater(item)} sx={{ p: 0, minWidth: 0, textTransform: 'none' }}>Save for later</Button><Button size="small" color="error" onClick={() => removeFromCart(item.productId, item.variantId)} sx={{ p: 0, minWidth: 0, textTransform: 'none' }}>Remove</Button></Box>
                     <Typography className="slot-item-price">{formatCurrency(item.price)}</Typography>
                   </Box>
 
                   <Box className="slot-qty-selector">
                     <button
                       className="slot-qty-btn"
-                      onClick={() => updateQuantity(item.title, -1, item.weight)}
+                      onClick={() => updateQuantity(item.productId, item.variantId, -1)}
                     >
                       -
                     </button>
                     <span className="slot-qty-count">{item.quantity}</span>
                     <button
                       className="slot-qty-btn"
-                      onClick={() => updateQuantity(item.title, 1, item.weight)}
+                      onClick={() => updateQuantity(item.productId, item.variantId, 1)}
                     >
                       +
                     </button>
@@ -101,14 +97,14 @@ const CartPage = () => {
               </Box>
             ))}
 
-            {savedForLater.length > 0 && <Box className="you-may-like-section"><Typography className="section-title-bold">Saved for Later</Typography>{savedForLater.map((item) => <Box key={item.title} sx={{ display:'flex',justifyContent:'space-between',alignItems:'center',py:1 }}><Typography>{item.title} · {item.weight}</Typography><Button onClick={() => restoreSavedItem(item)}>Move to Cart</Button></Box>)}</Box>}
+            {savedForLater.length > 0 && <Box className="you-may-like-section"><Typography className="section-title-bold">Saved for Later</Typography>{savedForLater.map((item) => <Box key={catalogItemKey(item)} sx={{ display:'flex',justifyContent:'space-between',alignItems:'center',py:1 }}><Typography>{item.title} · {item.weight}</Typography><Button onClick={() => restoreSavedItem(item)}>Move to Cart</Button></Box>)}</Box>}
 
             {/* You May Also Like Section */}
             <Box className="you-may-like-section">
               <Typography className="section-title-bold">You May Also Like</Typography>
               <Box className="like-items-row">
                 {youMayAlsoLike.map((prod, i) => (
-                  <ProductCard key={i} title={prod.title} weight={prod.weight} price={prod.price} />
+                  <ProductCard key={prod.productId || i} {...prod} />
                 ))}
               </Box>
             </Box>

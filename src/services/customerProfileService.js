@@ -1,0 +1,63 @@
+const PROFILE_BASE_URL = (import.meta.env.VITE_CUSTOMER_PROFILE_URL || '/customer-profile').replace(/\/$/, '');
+
+const token = () => localStorage.getItem('authToken');
+
+const request = async (path, options = {}) => {
+  const response = await fetch(`${PROFILE_BASE_URL}${path}`, {
+    ...options,
+    headers: {
+      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      Authorization: `Bearer ${token() || ''}`,
+      ...options.headers,
+    },
+  });
+  if (response.status === 204) return null;
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const validation = payload.fields ? Object.values(payload.fields).join(' ') : '';
+    const error = new Error(validation || payload.message || payload.error || `Profile request failed (${response.status}).`);
+    error.status = response.status;
+    throw error;
+  }
+  return payload;
+};
+
+const genderToApi = { Female: 'FEMALE', Male: 'MALE', Other: 'OTHER', 'Prefer not to say': 'PREFER_NOT_TO_SAY' };
+const genderFromApi = { FEMALE: 'Female', MALE: 'Male', OTHER: 'Other', PREFER_NOT_TO_SAY: 'Prefer not to say' };
+
+const fromApi = (profile) => ({ ...profile, gender: genderFromApi[profile.gender] || profile.gender || '' });
+const toApi = (profile) => ({
+  name: profile.name,
+  phone: profile.phone,
+  email: profile.email || null,
+  gender: genderToApi[profile.gender] || profile.gender || null,
+  dateOfBirth: profile.dateOfBirth || null,
+  photo: profile.photo || null,
+});
+
+export const customerProfileService = {
+  async me() { return fromApi(await request('/api/v1/profiles/me')); },
+  async save(profile) { return fromApi(await request('/api/v1/profiles/me', { method: 'PUT', body: JSON.stringify(toApi(profile)) })); },
+  async remove() { await request('/api/v1/profiles/me', { method: 'DELETE' }); },
+  async addresses() { return request('/api/v1/profiles/me/addresses'); },
+  async createAddress(address) { return request('/api/v1/profiles/me/addresses', { method: 'POST', body: JSON.stringify(addressToApi(address)) }); },
+  async updateAddress(id, address) { return request(`/api/v1/profiles/me/addresses/${id}`, { method: 'PUT', body: JSON.stringify(addressToApi(address)) }); },
+  async deleteAddress(id) { await request(`/api/v1/profiles/me/addresses/${id}`, { method: 'DELETE' }); },
+  async setDefaultAddress(id) { return request(`/api/v1/profiles/me/addresses/${id}/default`, { method: 'PATCH' }); },
+};
+
+const addressToApi = (address) => ({
+  type: address.type,
+  address: address.address,
+  phone: String(address.phone || '').replace(/\D/g, ''),
+  houseNumber: address.houseNumber,
+  floor: address.floor,
+  landmark: address.landmark || null,
+  latitude: address.coordinates?.lat ?? null,
+  longitude: address.coordinates?.lng ?? null,
+  street: address.manualLocation?.street || null,
+  city: address.manualLocation?.city || null,
+  state: address.manualLocation?.state || null,
+  pincode: address.manualLocation?.pincode || null,
+  defaultAddress: Boolean(address.isDefault),
+});

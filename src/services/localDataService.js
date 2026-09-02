@@ -81,15 +81,14 @@ export const orderStore = {
     const orders = read('orders', []);
     const currentUser = read('user', {});
     const deliveryOtp = String(Math.floor(100000 + Math.random() * 900000));
-    const products = read('local:products', []);
     const stores = read('local:stores', []);
-    const enrichedItems = cartItems.map((item) => { const source=products.find((product)=>product.id===item.id);const store=stores.find((entry)=>entry.name===source?.store||entry.id===source?.store);return {...item,sourceStore:store?.name||source?.store||'',sourceLocation:store?.location||source?.location||'',sourceState:store?.state||source?.state||''}; });
+    const enrichedItems = cartItems.map((item) => { const store=stores.find((entry)=>entry.id===item.storeId||entry.name===item.store);return {...item,sourceStore:store?.name||item.store||'',sourceLocation:store?.location||item.location||'',sourceState:store?.state||item.state||''}; });
     const customerLocation=checkout?.customerLocation || '';
     const isGlobal=enrichedItems.some((item)=>item.sourceLocation&&!customerLocation.toLowerCase().includes(item.sourceLocation.toLowerCase()));
     const primarySource=enrichedItems[0] || {};
     const order = {
       id: localOrderId || `ORD-${Date.now()}`,
-      items: enrichedItems.map((item)=>{const source=products.find((product)=>product.id===item.id);return {...item,...(source?.offerType==='Buy X Get Y'?{offerType:source.offerType,buyQuantity:Number(source.buyQuantity||1),freeQuantity:Math.floor(Number(item.quantity||1)/Number(source.buyQuantity||1))*Number(source.freeQuantity||1)}:{})};}),
+      items: enrichedItems.map((item)=>({...item,...(item.offerType==='Buy X Get Y'?{buyQuantity:Number(item.buyQuantity||1),freeQuantity:Math.floor(Number(item.quantity||1)/Number(item.buyQuantity||1))*Number(item.freeQuantity||1)}:{})})),
       fulfillmentType:isGlobal?'global':'nearby',
       channel:isGlobal?'India-wide Global Store':'Nearby Store',
       sourceStore:primarySource.sourceStore,
@@ -135,9 +134,9 @@ export const orderStore = {
     const current=read('orders',[]).find((order)=>order.id===id);
     if(!current||current.fulfillmentType!=='global') throw new Error('Global order not found.');
     if(current.globalApproval==='Approved') throw new Error('This global order is already approved and transferred.');
-    const products=read('local:products',[]);const stores=read('local:stores',[]);const inventory=read('local:inventory',[]);
+    const stores=read('local:stores',[]);const inventory=read('local:inventory',[]);
     const destination=String(current.destinationLocation||current.checkout?.customerLocation||'').toLowerCase();
-    const assignments=(current.items||[]).map((requested)=>{const requestedProduct=products.find((item)=>item.id===requested.id);const family=String(requestedProduct?.name||requested.title||'').replace(/\s+\d+$/,'').toLowerCase();const candidates=products.filter((product)=>String(product.name||'').replace(/\s+\d+$/,'').toLowerCase()===family).map((product)=>{const store=stores.find((item)=>item.id===product.storeId||item.name===product.store);const stock=inventory.find((item)=>item.productId===product.id);return {product,store,stock:Number(stock?.stock??product.stock??0)};}).filter((candidate)=>candidate.store&&candidate.store.status!=='Inactive'&&candidate.stock>=Number(requested.quantity||1));const selected=candidates.find((candidate)=>destination.includes(String(candidate.store.location||candidate.store.city).toLowerCase()))||candidates.find((candidate)=>candidate.store.name===requested.sourceStore)||candidates[0];if(!selected)throw new Error(`${requested.title} is unavailable in every active store.`);return {item:requested,selected};});
+    const assignments=(current.items||[]).map((requested)=>{const candidates=stores.map((store)=>{const stockRecord=inventory.find((item)=>item.productId===(requested.productId||requested.id)&&(!item.storeId||item.storeId===store.id));return {product:{id:requested.productId||requested.id,name:requested.title},store,stock:Number(stockRecord?.stock??0)};}).filter((candidate)=>candidate.store&&candidate.store.status!=='Inactive'&&candidate.stock>=Number(requested.quantity||1));const selected=candidates.find((candidate)=>destination.includes(String(candidate.store.location||candidate.store.city).toLowerCase()))||candidates.find((candidate)=>candidate.store.name===requested.sourceStore)||candidates[0];if(!selected)throw new Error(`${requested.title} is unavailable in every active store.`);return {item:requested,selected};});
     const selected=assignments[0]?.selected;
     if(!selected) throw new Error('This order has no fulfilment items.');
     const approvedAt=new Date().toISOString();
@@ -151,8 +150,8 @@ export const orderStore = {
   globalStoreOptions(id) {
     const order=read('orders',[]).find((item)=>item.id===id);
     if(!order||order.fulfillmentType!=='global') return [];
-    const products=read('local:products',[]);const stores=read('local:stores',[]);const inventory=read('local:inventory',[]);const destinationName=Object.keys(CITY_COORDINATES).find((city)=>String(order.destinationLocation||order.checkout?.customerLocation||'').toLowerCase().includes(city.toLowerCase()));const origin=CITY_COORDINATES[destinationName];
-    return stores.filter((store)=>store.status!=='Inactive').map((store)=>{const matches=(order.items||[]).map((requested)=>{const requestedProduct=products.find((item)=>item.id===requested.id);const family=String(requestedProduct?.name||requested.title||'').replace(/\s+\d+$/,'').toLowerCase();const product=products.find((item)=>item.store===store.name&&String(item.name||'').replace(/\s+\d+$/,'').toLowerCase()===family);const stockRecord=inventory.find((item)=>item.productId===product?.id);const stock=Number(stockRecord?.stock??product?.stock??0);return {requested,product,stock,available:Boolean(product)&&stock>=Number(requested.quantity||1)};});const kilometres=distanceKm(origin,CITY_COORDINATES[store.location||store.city]);return {store,matches,kilometres,distanceLabel:kilometres===0?'Same city':kilometres===Number.MAX_SAFE_INTEGER?'Distance unavailable':`${kilometres.toLocaleString('en-IN')} km away`,eligible:matches.length>0&&matches.every((item)=>item.available)};}).filter((option)=>option.eligible).sort((a,b)=>a.kilometres-b.kilometres||a.store.name.localeCompare(b.store.name));
+    const stores=read('local:stores',[]);const inventory=read('local:inventory',[]);const destinationName=Object.keys(CITY_COORDINATES).find((city)=>String(order.destinationLocation||order.checkout?.customerLocation||'').toLowerCase().includes(city.toLowerCase()));const origin=CITY_COORDINATES[destinationName];
+    return stores.filter((store)=>store.status!=='Inactive').map((store)=>{const matches=(order.items||[]).map((requested)=>{const product={id:requested.productId||requested.id,name:requested.title};const stockRecord=inventory.find((item)=>item.productId===product.id&&(!item.storeId||item.storeId===store.id));const stock=Number(stockRecord?.stock??0);return {requested,product,stock,available:Boolean(product.id)&&stock>=Number(requested.quantity||1)};});const kilometres=distanceKm(origin,CITY_COORDINATES[store.location||store.city]);return {store,matches,kilometres,distanceLabel:kilometres===0?'Same city':kilometres===Number.MAX_SAFE_INTEGER?'Distance unavailable':`${kilometres.toLocaleString('en-IN')} km away`,eligible:matches.length>0&&matches.every((item)=>item.available)};}).filter((option)=>option.eligible).sort((a,b)=>a.kilometres-b.kilometres||a.store.name.localeCompare(b.store.name));
   },
   assignGlobalStore(id, storeId) {
     const current=read('orders',[]).find((order)=>order.id===id);if(!current)throw new Error('Order not found.');if(current.globalApproval==='Approved')throw new Error('This order has already been assigned.');

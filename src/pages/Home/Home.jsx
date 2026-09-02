@@ -20,24 +20,14 @@ import CategoryCircle from '../../components/CategoryCircle/CategoryCircle';
 import CampaignCarousel from '../../components/CampaignCarousel/CampaignCarousel';
 import BottomNav from '../../components/BottomNav/BottomNav';
 import { AppContext } from '../../context/AppContext';
-import { collectionStore, orderStore, subscribeToLocalData } from '../../services/localDataService';
-import { customerProduct } from '../../services/sharedCatalog';
+import { collectionStore, orderStore } from '../../services/localDataService';
 import { promotionApplies } from '../../services/promotionScope';
+import { getCategoryProducts, getProducts } from '../../services/catalogApi';
+import { adaptProductList } from '../../services/catalogAdapter';
+import { dummyCatalogEnabled, filterDummyProducts } from '../../services/dummyCatalog';
 import './Home.css';
 
-import pickleJarImg from '../../assets/images/pickel-removebg-preview.png';
-import mangoPickleImg from '../../assets/images/mango_pickle_jar.png';
-import lemonPickleImg from '../../assets/images/lemon_pickle_jar.png';
-import garlicPickleImg from '../../assets/images/garlic_pickle_jar.png';
-import redChilliImg from '../../assets/images/red_chilli_powder.png';
-import homeSpicesBanner from '../../assets/images/home_spices.png';
-import wholeSpicesImg from '../../assets/images/whole_spices.png';
-import dryFruitsImg from '../../assets/images/dry_fruits.png';
-import bestSellersBanner from '../../assets/images/best_sellers.png';
-import traditionalPicklesBanner from '../../assets/images/traditional_pickles.png';
-
 const Home = () => {
-  const [, refreshSharedData] = useState(0);
   const [selectedSubcategory, setSelectedSubcategory] = useState('All');
   const [showSearchFilters, setShowSearchFilters] = useState(false);
   const [showSearchSort, setShowSearchSort] = useState(false);
@@ -46,9 +36,6 @@ const Home = () => {
   const [searchRating, setSearchRating] = useState('all');
   const [searchAvailability, setSearchAvailability] = useState('all');
   const [searchSort, setSearchSort] = useState('popularity');
-  useEffect(() => subscribeToLocalData(({ key }) => {
-    if (!key || ['local:products','local:categories','local:stores','local:inventory','local:banners'].includes(key)) refreshSharedData((value) => value + 1);
-  }), []);
   const navigate = useNavigate();
   const {
     selectedCategory,
@@ -59,76 +46,42 @@ const Home = () => {
     detectUserLocation,
     t,
     userCity,
+    catalogProducts,
+    catalogCategories,
+    catalogLoading,
+    catalogError,
   } = useContext(AppContext);
+  const [filteredCatalogProducts, setFilteredCatalogProducts] = useState([]);
+  const [filterLoading, setFilterLoading] = useState(false);
 
-  const dummyProducts = [
-    { title: 'Avakaya Pickle', weight: '500g', price: '199', image: mangoPickleImg },
-    { title: 'Lemon Pickle', weight: '500g', price: '189', image: lemonPickleImg },
-    { title: 'Gongura Pickle', weight: '500g', price: '199', image: pickleJarImg },
-    { title: 'Garlic Pickle', weight: '500g', price: '209', image: garlicPickleImg },
-    { title: 'Carrot Pickle', weight: '500g', price: '189', image: lemonPickleImg },
-    { title: 'Chicken Pickle', weight: '500g', price: '249', image: traditionalPicklesBanner },
-    { title: 'Prawns Pickle', weight: '250g', price: '299', image: traditionalPicklesBanner },
-    { title: 'Mutton Pickle', weight: '250g', price: '349', image: traditionalPicklesBanner },
-    { title: 'Tomato Pickle', weight: '500g', price: '179', image: pickleJarImg },
-    { title: 'Ginger Pickle', weight: '250g', price: '169', image: garlicPickleImg },
-    { title: 'Mixed Pickle', weight: '500g', price: '199', image: bestSellersBanner },
-    { title: 'Red Chilli Pickle', weight: '500g', price: '199', image: redChilliImg },
-  ];
+  useEffect(() => {
+    const category = catalogCategories.find((item) => item.name === selectedCategory || item.title === selectedCategory || item.id === selectedCategory);
+    const shouldFetch = Boolean((selectedCategory && selectedCategory !== 'All') || homeSearchQuery.trim());
+    if (!shouldFetch) {
+      const timer = window.setTimeout(() => setFilteredCatalogProducts([]), 0);
+      return () => window.clearTimeout(timer);
+    }
+    let ignore = false;
+    const loadingTimer = window.setTimeout(() => setFilterLoading(true), 0);
+    const query = homeSearchQuery.trim();
+    const params = { status: 'ACTIVE', search: query || undefined, q: query || undefined };
+    const request = category?.id && selectedCategory !== 'All' ? getCategoryProducts(category.id, params) : getProducts(params);
+    request
+      .then((payload) => {
+        if (!ignore) setFilteredCatalogProducts(adaptProductList(payload || []));
+      })
+      .catch(() => {
+        if (!ignore) setFilteredCatalogProducts(dummyCatalogEnabled() ? adaptProductList(filterDummyProducts({ ...params, categoryId: category?.id, category: selectedCategory !== 'All' ? selectedCategory : undefined })) : []);
+      })
+      .finally(() => {
+        if (!ignore) setFilterLoading(false);
+      });
+    return () => {
+      ignore = true;
+      window.clearTimeout(loadingTimer);
+    };
+  }, [selectedCategory, homeSearchQuery, catalogCategories]);
 
-  const spiceProducts = [
-    { title: 'Turmeric Powder', weight: '250g', price: '89', image: homeSpicesBanner },
-    { title: 'Red Chilli Powder', weight: '250g', price: '120', image: redChilliImg },
-    { title: 'Coriander Powder', weight: '250g', price: '95', image: homeSpicesBanner },
-    { title: 'Garam Masala', weight: '100g', price: '110', image: wholeSpicesImg },
-    { title: 'Sambar Powder', weight: '200g', price: '105', image: homeSpicesBanner },
-    { title: 'Biryani Masala', weight: '100g', price: '130', image: wholeSpicesImg },
-    { title: 'Reshampatti Chilli Powder', weight: '500g', price: '219', image: redChilliImg },
-    { title: 'Dhania Powder', weight: '500g', price: '179', image: homeSpicesBanner },
-    { title: 'Special Garam Masala', weight: '250g', price: '199', image: wholeSpicesImg },
-    { title: 'Rasam Powder', weight: '250g', price: '149', image: homeSpicesBanner },
-    { title: 'Kashmiri Red Chilli Powder', weight: '250g', price: '189', image: redChilliImg },
-    { title: 'Cumin (Jeera) Powder', weight: '250g', price: '159', image: wholeSpicesImg },
-    { title: 'Black Pepper Powder', weight: '100g', price: '129', image: wholeSpicesImg },
-  ];
-
-  const wholeMasalaItems = [
-    { title: 'Whole Clove (Laung)', weight: '100g', price: '149', image: wholeSpicesImg },
-    { title: 'Cardamom (Elaichi)', weight: '100g', price: '299', image: wholeSpicesImg },
-    { title: 'Cinnamon Sticks', weight: '100g', price: '129', image: wholeSpicesImg },
-    { title: 'Star Anise (Chakra Phool)', weight: '100g', price: '159', image: wholeSpicesImg },
-    { title: 'Black Pepper', weight: '100g', price: '119', image: wholeSpicesImg },
-    { title: 'Nutmeg (Jaiphal)', weight: '50g', price: '99', image: wholeSpicesImg },
-  ];
-
-  const masalasItems = [
-    { title: 'Garam Masala Powder', weight: '200g', price: '139', image: wholeSpicesImg },
-    { title: 'Sambar Masala', weight: '250g', price: '119', image: wholeSpicesImg },
-    { title: 'Chicken Biryani Masala', weight: '100g', price: '89', image: wholeSpicesImg },
-    { title: 'Rasam Powder', weight: '200g', price: '99', image: wholeSpicesImg },
-    { title: 'Meat Masala Powder', weight: '150g', price: '125', image: wholeSpicesImg },
-    { title: 'Chana Masala Powder', weight: '100g', price: '79', image: wholeSpicesImg },
-  ];
-
-  const dryFruitsItems = [
-    { title: 'Premium Jumbo Cashews', weight: '250g', price: '349', image: dryFruitsImg },
-    { title: 'California Almonds (Badam)', weight: '500g', price: '450', image: dryFruitsImg },
-    { title: 'Afghani Raisins (Kishmish)', weight: '250g', price: '179', image: dryFruitsImg },
-    { title: 'Walnut Kernels (Akhrot)', weight: '250g', price: '399', image: dryFruitsImg },
-    { title: 'Pistachios (Pista)', weight: '200g', price: '320', image: dryFruitsImg },
-  ];
-
-  const dummyCategories = [
-    { title: 'Pickles', categoryKey: 'Pickles', image: mangoPickleImg },
-    { title: 'Whole Masala', categoryKey: 'Whole Masala', image: wholeSpicesImg },
-    { title: 'Masalas', categoryKey: 'Masalas', image: wholeSpicesImg },
-    { title: 'Spice powder', categoryKey: 'Spice powder', image: homeSpicesBanner },
-    { title: 'Dry Fruits', categoryKey: 'Dry Fruits', image: dryFruitsImg },
-  ];
-  // Kept only as a migration reference for the original customer catalogue.
-  void [dummyProducts, spiceProducts, wholeMasalaItems, masalasItems, dryFruitsItems, dummyCategories];
-
-  const inventory = collectionStore.list('inventory');
   const inferSubcategory = (item) => {
     if (item.subcategory) return item.subcategory;
     if (item.category === 'Pickles') return /chicken|mutton|prawn|fish/i.test(item.name || item.title) ? 'Non-Veg Pickles' : 'Veg Pickles';
@@ -141,19 +94,19 @@ const Home = () => {
   const reviews = collectionStore.list('reviews').filter((review) => review.status === 'Approved' && review.active !== false);
   const stores = collectionStore.list('stores');
   const orderCounts = orderStore.list().flatMap((order) => order.items || []).reduce((counts,item) => ({ ...counts,[item.id || item.title]:(counts[item.id || item.title] || 0)+Number(item.quantity || 1) }),{});
-  const allMasterProducts = collectionStore.list('products')
+  const allMasterProducts = catalogProducts
     .filter((item) => item.status !== 'Inactive' && item.active !== false)
     .map((item) => {
-      const product = customerProduct(item, inventory);
+      const product = item;
       const productReviews = reviews.filter((review) => review.productId === (product.id || product.sku || product.title) || review.product === product.title);
       const rating = productReviews.length ? productReviews.reduce((sum,review) => sum + Number(review.rating || 0), 0) / productReviews.length : 0;
       const store = stores.find((entry) => entry.name === product.store);
       const pickup = product.pickup === true || product.pickup === 'Yes' || store?.pickup === 'Yes';
       const deliveryMinutes = Number(product.deliveryMinutes || 0);
-      const basePrice = Number(item.price || item.offerPrice || 0);
-      return { ...product, subcategory:inferSubcategory(item), rating, pickup, deliveryMinutes, under30:deliveryMinutes > 0 && deliveryMinutes <= 30, offer:Number(item.discount || 0) > 0 || (Number(item.offerPrice) > 0 && Number(item.offerPrice) < basePrice), popularity:Number(orderCounts[product.id] || orderCounts[product.title] || 0) + (product.bestSeller === 'Yes' ? 100 : 0), newest:new Date(product.createdAt || 0).getTime() };
+      const basePrice = Number(product.price || product.offerPrice || product.basePrice || 0);
+      return { ...product, title: product.title || product.name || 'Product', subcategory:inferSubcategory(item), rating, pickup, deliveryMinutes, under30:deliveryMinutes > 0 && deliveryMinutes <= 30, offer:Number(item.discount || 0) > 0 || (Number(product.offerPrice) > 0 && Number(product.offerPrice) < basePrice), popularity:Number(orderCounts[product.id] || orderCounts[product.title] || 0) + (product.bestSeller === 'Yes' ? 100 : 0), newest:new Date(product.createdAt || 0).getTime() };
     });
-  const sharedCategories = collectionStore.list('categories')
+  const sharedCategories = catalogCategories
     .filter((item) => item.status !== 'Inactive' && item.active !== false)
     .sort((a,b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
   const cityName = collectionStore.list('locations').map((item)=>item.name).find((name)=>userCity.toLowerCase().includes(String(name).toLowerCase()))?.toLowerCase() || (userCity || '').split(',')[0]?.trim().toLowerCase();
@@ -171,19 +124,20 @@ const Home = () => {
   });
   const subcategories = selectedCategory === 'All' ? [] : [...new Set(allMasterProducts.filter((item) => item.category === selectedCategory).map((item) => item.subcategory))];
   const effectiveSubcategory = subcategories.includes(selectedSubcategory) ? selectedSubcategory : 'All';
+  const catalogApiProducts = ((selectedCategory && selectedCategory !== 'All') || homeSearchQuery.trim()) ? filteredCatalogProducts : allMasterProducts;
 
   const getCategoryItems = () => {
     const baseCategoryPool = selectedCategory && selectedCategory !== 'All'
-      ? allMasterProducts.filter((item) => (item.category === selectedCategory || (selectedCategory === 'Spice Powders' && item.category === 'Spice powder')) && (effectiveSubcategory === 'All' || item.subcategory === effectiveSubcategory))
+      ? catalogApiProducts.filter((item) => (item.category === selectedCategory || (selectedCategory === 'Spice Powders' && item.category === 'Spice powder')) && (effectiveSubcategory === 'All' || item.subcategory === effectiveSubcategory))
       : null;
 
     if (homeSearchQuery && homeSearchQuery.trim()) {
-      const searchPool = baseCategoryPool || allMasterProducts;
+      const searchPool = baseCategoryPool || catalogApiProducts;
       return searchPool.filter((p) => p.title.toLowerCase().includes(homeSearchQuery.trim().toLowerCase()))
         .filter((product) => searchCategory === 'all' || product.category === searchCategory)
         .filter((product) => searchPrice === 'all' || Number(product.price) <= Number(searchPrice))
         .filter((product) => searchRating === 'all' || (searchRating === '5' ? product.rating === 5 : product.rating >= 4))
-        .filter((product) => searchAvailability === 'all' || (searchAvailability === 'in-stock' ? !product.outOfStock : searchAvailability === 'out-of-stock' ? product.outOfStock : searchAvailability === 'pickup' ? product.pickup : product.under30))
+        .filter((product) => searchAvailability === 'all' || (searchAvailability === 'pickup' ? product.pickup : product.under30))
         .sort((a,b) => searchSort === 'price-low' ? Number(a.price)-Number(b.price) : searchSort === 'price-high' ? Number(b.price)-Number(a.price) : searchSort === 'newest' ? b.newest-a.newest : searchSort === 'pickup' ? Number(b.pickup)-Number(a.pickup) || b.popularity-a.popularity : searchSort === 'offers' ? Number(b.offer)-Number(a.offer) || b.popularity-a.popularity : searchSort === 'under30' ? Number(b.under30)-Number(a.under30) || (a.deliveryMinutes || Infinity)-(b.deliveryMinutes || Infinity) : b.popularity-a.popularity);
     }
 
@@ -201,6 +155,8 @@ const Home = () => {
       {subcategories.length > 0 && <Box className="subcategory-nav"><Button className={effectiveSubcategory === 'All' ? 'active' : ''} onClick={() => setSelectedSubcategory('All')}>All</Button>{subcategories.map((name) => <Button key={name} className={effectiveSubcategory === name ? 'active' : ''} onClick={() => setSelectedSubcategory(name)}>{name}</Button>)}</Box>}
 
       <Box className="home-content-scroll">
+        {(catalogLoading || filterLoading) && <Box style={{ padding: '16px 4vw' }}><Typography>Loading catalog…</Typography></Box>}
+        {catalogError && !catalogLoading && <Box style={{ padding: '16px 4vw' }}><Typography color="error">{catalogError}</Typography></Box>}
         {activeCategoryProducts ? (
           activeCategoryProducts.length > 0 ? (
             <Box style={{ padding: '16px 4vw' }}>
@@ -217,7 +173,7 @@ const Home = () => {
                   <Select size="small" value={searchCategory} onChange={(event) => setSearchCategory(event.target.value)}><MenuItem value="all">All Categories</MenuItem>{sharedCategories.map((category) => <MenuItem key={category.id} value={category.name}>{category.name}</MenuItem>)}</Select>
                   <Select size="small" value={searchPrice} onChange={(event) => setSearchPrice(event.target.value)}><MenuItem value="all">All Prices</MenuItem><MenuItem value="150">Under ₹150</MenuItem><MenuItem value="200">Under ₹200</MenuItem><MenuItem value="300">Under ₹300</MenuItem></Select>
                   <Select size="small" value={searchRating} onChange={(event) => setSearchRating(event.target.value)}><MenuItem value="all">All Ratings</MenuItem><MenuItem value="4">4 stars & above</MenuItem><MenuItem value="5">5 stars only</MenuItem></Select>
-                  <Select size="small" value={searchAvailability} onChange={(event) => setSearchAvailability(event.target.value)}><MenuItem value="all">All Availability</MenuItem><MenuItem value="in-stock">In Stock</MenuItem><MenuItem value="out-of-stock">Out of Stock</MenuItem><MenuItem value="pickup">Pickup Available</MenuItem><MenuItem value="under30">Under 30 min</MenuItem></Select>
+                  <Select size="small" value={searchAvailability} onChange={(event) => setSearchAvailability(event.target.value)}><MenuItem value="all">All Availability</MenuItem><MenuItem value="pickup">Pickup Available</MenuItem><MenuItem value="under30">Under 30 min</MenuItem></Select>
                   {searchFilterCount > 0 && <Button onClick={resetSearchFilters}>Reset filters</Button>}
                 </Box>}
                 {showSearchSort && <Box className="home-search-panel home-sort-panel"><Select size="small" value={searchSort} onChange={(event) => setSearchSort(event.target.value)}><MenuItem value="popularity">Popularity</MenuItem><MenuItem value="newest">Newest</MenuItem><MenuItem value="price-low">Price Low to High</MenuItem><MenuItem value="price-high">Price High to Low</MenuItem><MenuItem value="pickup">Pickup</MenuItem><MenuItem value="offers">Offers</MenuItem><MenuItem value="under30">Under 30 min delivery</MenuItem></Select></Box>}
@@ -299,13 +255,13 @@ const Home = () => {
 
             <ProductSection title={t('traditionalPickles')} onViewAll={() => navigate('/search')}>
               {allMasterProducts.filter((item) => item.category === 'Pickles').map((prod) => (
-                <ProductCard key={prod.id} title={prod.title} weight={prod.weight} price={prod.price} image={prod.image} />
+                <ProductCard key={prod.id} {...prod} />
               ))}
             </ProductSection>
 
             <ProductSection title={t('homeSpices')} onViewAll={() => navigate('/search')}>
               {allMasterProducts.filter((item) => item.category === 'Spice powder').map((prod) => (
-                <ProductCard key={prod.id} title={prod.title} weight={prod.weight} price={prod.price} image={prod.image} />
+                <ProductCard key={prod.id} {...prod} />
               ))}
             </ProductSection>
 

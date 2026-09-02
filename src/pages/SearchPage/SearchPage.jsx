@@ -7,13 +7,15 @@ import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import { useNavigate } from 'react-router-dom';
 import { AppContext } from '../../context/AppContext';
 import pickleJarImg from '../../assets/images/pickel-removebg-preview.png';
-import { collectionStore, orderStore, subscribeToLocalData } from '../../services/localDataService';
-import { customerProduct } from '../../services/sharedCatalog';
+import { collectionStore, orderStore } from '../../services/localDataService';
+import { getProducts } from '../../services/catalogApi';
+import { adaptProductList } from '../../services/catalogAdapter';
+import { dummyCatalogEnabled, filterDummyProducts } from '../../services/dummyCatalog';
 import './SearchPage.css';
 
 const SearchPage = () => {
   const navigate = useNavigate();
-  const { addToCart, setSelectedProduct, formatCurrency } = useContext(AppContext);
+  const { addToCart, setSelectedProduct, formatCurrency, catalogProducts, catalogCategories } = useContext(AppContext);
   const [searchTerm, setSearchTerm] = useState('');
   const [recentSearches, setRecentSearches] = useState(['Mango pickle']);
   const [sortBy, setSortBy] = useState('popularity');
@@ -21,79 +23,46 @@ const SearchPage = () => {
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [ratingFilter, setRatingFilter] = useState('all');
   const [availabilityFilter, setAvailabilityFilter] = useState('all');
-  const [, refreshSharedData] = useState(0);
-  useEffect(() => subscribeToLocalData(({ key }) => {
-    if (!key || ['local:products','local:inventory','local:reviews','orders','local:stores'].includes(key)) refreshSharedData((value) => value + 1);
-  }), []);
+  const [apiProducts, setApiProducts] = useState([]);
 
-  const legacyProducts = [
-    {
-      title: 'Mango Avakaya Pickle â€“ Spicy Delight',
-      weight: '500 g',
-      price: 279,
-      delivery: 'Instant Delivery Available',
-      image: pickleJarImg,
-    },
-    {
-      title: 'Sweet Mango Pickle â€“ Family Favorite',
-      weight: '500 g',
-      price: 279,
-      delivery: 'Instant Delivery Available',
-      image: pickleJarImg,
-    },
-    {
-      title: 'Mango Avakaya Pickle â€“ Spicy Delight',
-      weight: '250 g',
-      price: 99,
-      delivery: 'Instant Delivery Available',
-      image: pickleJarImg,
-    },
-    {
-      title: 'Mango Avakaya Pickle â€“ Spicy Delight',
-      weight: '1kg',
-      price: 300,
-      delivery: 'Instant Delivery Available',
-      image: pickleJarImg,
-    },
-    {
-      title: 'Sweet Mango Pickle â€“ Family Favorite',
-      weight: '250 g',
-      price: 279,
-      delivery: 'Instant Delivery Available',
-      image: pickleJarImg,
-    },
-    {
-      title: 'Sweet Mango Pickle â€“ Family Favorite',
-      weight: '500 g',
-      price: 279,
-      delivery: 'Instant Delivery Available',
-      image: pickleJarImg,
-    },
-    {
-      title: 'Gongora Pickle',
-      weight: '250 g',
-      price: 159,
-      delivery: 'Instant Delivery Available',
-      image: pickleJarImg,
-    },
-    {
-      title: 'Lemon Pickle',
-      weight: '500 g',
-      price: 189,
-      delivery: 'Instant Delivery Available',
-      image: pickleJarImg,
-    },
-  ];
+  useEffect(() => {
+    if (!searchTerm.trim()) {
+      const timer = window.setTimeout(() => setApiProducts([]), 0);
+      return () => window.clearTimeout(timer);
+    }
+    let ignore = false;
+    const params = {
+      status: 'ACTIVE',
+      search: searchTerm.trim(),
+      q: searchTerm.trim(),
+      categoryId: categoryFilter !== 'all' ? categoryFilter : undefined,
+      category: categoryFilter !== 'all' ? categoryFilter : undefined,
+    };
+    getProducts(params)
+      .then((payload) => {
+        if (!ignore) setApiProducts(adaptProductList(payload || []));
+      })
+      .catch(() => {
+        if (!ignore) setApiProducts(dummyCatalogEnabled() ? adaptProductList(filterDummyProducts(params)) : []);
+      });
+    return () => { ignore = true; };
+  }, [searchTerm, categoryFilter]);
 
-  void legacyProducts;
-  const inventory = collectionStore.list('inventory');
   const reviews = collectionStore.list('reviews').filter((review) => review.status === 'Approved' && review.active !== false);
   const stores = collectionStore.list('stores');
   const orderCounts = orderStore.list().flatMap((order) => order.items || []).reduce((counts,item) => ({ ...counts,[item.id || item.title]:(counts[item.id || item.title] || 0)+Number(item.quantity || 1) }),{});
-  const categories = [...new Set(collectionStore.list('products').map((item) => item.category).filter(Boolean))];
-  const allProducts = collectionStore.list('products')
-    .filter((item) => item.status !== 'Inactive' && item.active !== false)
-    .map((item) => ({ ...customerProduct(item, inventory), basePrice: Number(item.price || item.offerPrice || 0) }));
+  const categories = catalogCategories.map((category) => category.name || category.title || category);
+  const allProducts = (searchTerm.trim() ? apiProducts : catalogProducts)
+    .map((product) => ({
+      ...product,
+      title: product.title || product.name || 'Product',
+      category: product.category || product.categoryName || 'General',
+      price: Number(product.price ?? product.offerPrice ?? 0),
+      basePrice: Number(product.basePrice ?? product.price ?? product.offerPrice ?? 0),
+      description: product.description || '',
+      id: product.id || product.productId || product.sku || product.title,
+      image: product.image || product.images?.[0] || pickleJarImg,
+    }));
   const searchableProducts = allProducts.map((product) => {
     const productReviews=reviews.filter((review) => review.productId === (product.id || product.sku || product.title) || review.product === product.title);
     const rating=productReviews.length ? productReviews.reduce((sum,review)=>sum+Number(review.rating || 0),0)/productReviews.length : 0;
@@ -106,7 +75,7 @@ const SearchPage = () => {
     ? searchableProducts.filter((p) =>
         [p.title,p.description,p.category,p.subcategory,p.ingredients,p.tags].filter(Boolean).join(' ').toLowerCase().includes(searchTerm.toLowerCase())
       )
-    : []).filter((product) => categoryFilter === 'all' || product.category === categoryFilter).filter((product) => maxPrice === 'all' || Number(product.price) <= Number(maxPrice)).filter((product) => ratingFilter === 'all' || (ratingFilter === '5' ? product.rating === 5 : product.rating >= 4)).filter((product) => availabilityFilter === 'all' || (availabilityFilter === 'in-stock' ? !product.outOfStock : availabilityFilter === 'out-of-stock' ? product.outOfStock : availabilityFilter === 'pickup' ? product.pickup : product.under30)).sort((a,b) => sortBy === 'price-low' ? Number(a.price)-Number(b.price) : sortBy === 'price-high' ? Number(b.price)-Number(a.price) : sortBy === 'newest' ? b.newest-a.newest : sortBy === 'pickup' ? Number(b.pickup)-Number(a.pickup) || b.popularity-a.popularity : sortBy === 'offers' ? Number(b.offer)-Number(a.offer) || b.popularity-a.popularity : sortBy === 'under30' ? Number(b.under30)-Number(a.under30) || (a.deliveryMinutes || Infinity)-(b.deliveryMinutes || Infinity) : b.popularity-a.popularity);
+    : []).filter((product) => categoryFilter === 'all' || product.category === categoryFilter).filter((product) => maxPrice === 'all' || Number(product.price) <= Number(maxPrice)).filter((product) => ratingFilter === 'all' || (ratingFilter === '5' ? product.rating === 5 : product.rating >= 4)).filter((product) => availabilityFilter === 'all' || (availabilityFilter === 'pickup' ? product.pickup : product.under30)).sort((a,b) => sortBy === 'price-low' ? Number(a.price)-Number(b.price) : sortBy === 'price-high' ? Number(b.price)-Number(a.price) : sortBy === 'newest' ? b.newest-a.newest : sortBy === 'pickup' ? Number(b.pickup)-Number(a.pickup) || b.popularity-a.popularity : sortBy === 'offers' ? Number(b.offer)-Number(a.offer) || b.popularity-a.popularity : sortBy === 'under30' ? Number(b.under30)-Number(a.under30) || (a.deliveryMinutes || Infinity)-(b.deliveryMinutes || Infinity) : b.popularity-a.popularity);
 
   const hasActiveFilters = categoryFilter !== 'all' || maxPrice !== 'all' || ratingFilter !== 'all' || availabilityFilter !== 'all' || sortBy !== 'popularity';
   const clearFilters = () => {
@@ -132,7 +101,8 @@ const SearchPage = () => {
 
   const handleItemClick = (product) => {
     setSelectedProduct(product);
-    navigate('/product-info');
+    const targetId = product.productId || product.id || product.sku || product.title;
+    navigate(`/product-info/${encodeURIComponent(targetId)}`);
   };
 
   return (
@@ -212,8 +182,6 @@ const SearchPage = () => {
             </Select>
             <Select size="small" value={availabilityFilter} onChange={(event) => setAvailabilityFilter(event.target.value)}>
               <MenuItem value="all">All Availability</MenuItem>
-              <MenuItem value="in-stock">In Stock</MenuItem>
-              <MenuItem value="out-of-stock">Out of Stock</MenuItem>
               <MenuItem value="pickup">Pickup Available</MenuItem>
               <MenuItem value="under30">Under 30 min</MenuItem>
             </Select>
@@ -256,12 +224,9 @@ const SearchPage = () => {
                     {prod.offer && <Chip size="small" label="Offer" color="success" variant="outlined" />}
                     {prod.pickup && <Chip size="small" label="Pickup" variant="outlined" />}
                     {prod.under30 && <Chip size="small" label="Under 30 min" variant="outlined" />}
-                    <Chip size="small" label={prod.outOfStock ? 'Out of Stock' : 'In Stock'} color={prod.outOfStock ? 'error' : 'success'} variant={prod.outOfStock ? 'outlined' : 'filled'} />
                   </Box>
                   <Typography className="search-prod-delivery">
-                    {prod.outOfStock
-                      ? 'Currently unavailable'
-                      : prod.deliveryMinutes
+                    {prod.deliveryMinutes
                         ? `${prod.deliveryMinutes} min delivery`
                         : 'Standard delivery'}
                   </Typography>
@@ -277,15 +242,18 @@ const SearchPage = () => {
                     onClick={() =>
                       addToCart({
                         id: prod.id,
+                        productId: prod.productId,
+                        variantId: prod.variantId,
+                        selectedVariant: prod.variants?.[0],
                         title: prod.title,
                         weight: prod.weight,
                         price: prod.price,
                         image: prod.image,
                       })
                     }
-                    disabled={prod.outOfStock}
+                    disabled={prod.active === false}
                   >
-                    {prod.outOfStock ? 'Out of stock' : 'Add +'}
+                    {prod.active === false ? 'Unavailable' : 'Add +'}
                   </Button>
                 </Box>
               </Box>

@@ -1,4 +1,4 @@
-import { useRef, useState, useContext } from 'react';
+import { useRef, useState, useContext, useEffect } from 'react';
 import { Box, Typography, Button, Divider } from '@mui/material';
 import Header from '../../components/Header/Header';
 import BottomNav from '../../components/BottomNav/BottomNav';
@@ -18,7 +18,7 @@ import HomeOutlinedIcon from '@mui/icons-material/HomeOutlined';
 import DeleteForeverOutlinedIcon from '@mui/icons-material/DeleteForeverOutlined';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { AppContext } from '../../context/AppContext';
-import { profileStore } from '../../services/localDataService';
+import { customerProfileService } from '../../services/customerProfileService';
 import { orderStore } from '../../services/localDataService';
 import './Profile.css';
 
@@ -39,14 +39,24 @@ const Profile = () => {
   const recentOrders = orderStore.list().slice(0, 1);
 
   const [feedback, setFeedback] = useState('');
+  useEffect(() => {
+    if (!localStorage.getItem('authToken')) return;
+    customerProfileService.me().then((profile) => {
+      setProfileData({ name: profile.name || '', phone: profile.phone || '', email: profile.email || '', gender: profile.gender || '', dateOfBirth: profile.dateOfBirth || '' });
+      setUser((current) => ({ ...current, ...profile }));
+    }).catch((error) => {
+      if (error.status !== 404) setFeedback(error.message);
+    });
+  }, [setUser]);
+
   const handleSaveProfile = async () => {
     if (!profileData.name.trim()) return setFeedback('Name is required.');
     if (!/^\+?[\d\s]{10,15}$/.test(profileData.phone)) return setFeedback('Enter a valid mobile number.');
     if (profileData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profileData.email)) return setFeedback('Enter a valid email address.');
     try {
-      const saved = await profileStore.update(profileData);
+      const saved = await customerProfileService.save({ ...profileData, photo: user?.photo || null });
       setProfileData(saved);
-      setUser(saved);
+      setUser((current) => ({ ...current, ...saved }));
       setIsEditing(false);
       setFeedback(addresses.length ? 'Profile information updated successfully.' : 'Profile saved. Add a delivery address to complete your account.');
     } catch (error) {
@@ -66,8 +76,8 @@ const Profile = () => {
     if (file.size > 2 * 1024 * 1024) return setFeedback('Profile photo must be smaller than 2 MB.');
     const reader = new FileReader();
     reader.onload = async () => {
-      const updatedUser = await profileStore.update({ ...profileData, photo: reader.result });
-      setUser(updatedUser);
+      const updatedUser = await customerProfileService.save({ ...profileData, photo: reader.result });
+      setUser((current) => ({ ...current, ...updatedUser }));
       setFeedback('Profile photo updated successfully.');
     };
     reader.onerror = () => setFeedback('The selected image could not be read.');
@@ -212,7 +222,7 @@ const Profile = () => {
                       <Typography className="detail-label">Member Since</Typography>
                       <Typography className="detail-value flex-align">
                         <DescriptionOutlinedIcon fontSize="small" sx={{ mr: 1, color: '#666' }} /> 
-                        12 May 2024
+                        {user?.createdAt ? formatDateTime(user.createdAt, { dateStyle: 'medium' }) : 'Not available'}
                       </Typography>
                     </Box>
                   </Box>

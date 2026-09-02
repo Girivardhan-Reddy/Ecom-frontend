@@ -46,7 +46,7 @@ const AddressFormPage = () => {
     }, (error) => { setIsLocating(false); setFormError(`${error.message}. Search the location manually.`); }, { enableHighAccuracy:true,timeout:10000 });
   }, [editAddress, selectedLocation, location.state?.startManual]);
 
-  const handleSaveAddress = () => {
+  const handleSaveAddress = async () => {
     if (!houseNumber.trim() || !floor.trim() || !/^\d{10}$/.test(phone)) {
       setFormError('Complete all required fields and enter a valid 10-digit phone number.');
       return;
@@ -57,8 +57,13 @@ const AddressFormPage = () => {
     const formatted = `${saveAs}, ${houseNumber}, Floor ${floor}${landmark.trim() ? `, ${landmark}` : ''}, ${baseLocation}`;
     setDeliveryAddress(formatted);
     const addressData = { type: saveAs, address: formatted, phone, houseNumber, floor, landmark, coordinates: manualMode ? null : (locationSummary?.coordinates || editAddress?.coordinates || null), manualLocation: manualMode ? manualLocation : null };
-    if (editAddress?.id) updateAddress(editAddress.id, addressData);
-    else addAddress(addressData);
+    try {
+      if (editAddress?.id) await updateAddress(editAddress.id, addressData);
+      else await addAddress(addressData);
+    } catch (error) {
+      setFormError(error.message || 'Could not save the address.');
+      return;
+    }
     setFormError('');
     setShowSuccessModal(true);
 

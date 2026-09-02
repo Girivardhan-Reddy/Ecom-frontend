@@ -1,5 +1,9 @@
 import { createContext, useState, useEffect } from 'react';
 import { reverseGeocodeOpenStreetMap } from '../services/openStreetMapService';
+import { customerProfileService } from '../services/customerProfileService';
+import { getProducts, getCategories, getCategoryProducts } from '../services/catalogApi';
+import { adaptProductList, adaptCategoryList } from '../services/catalogAdapter';
+import { dummyCatalogEnabled, dummyCategories, filterDummyProducts } from '../services/dummyCatalog';
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const AppContext = createContext();
@@ -33,8 +37,102 @@ export const AppProvider = ({ children }) => {
   });
 
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [catalogProducts, setCatalogProducts] = useState([]);
+  const [catalogCategories, setCatalogCategories] = useState([]);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogError, setCatalogError] = useState(null);
+  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [userCity, setUserCity] = useState('Hyderabad, Telangana');
+  const [homeSearchQuery, setHomeSearchQuery] = useState('');
+  const [deliveryAddress, setDeliveryAddress] = useState(
+    'Home, Dno: 401, indira nagar, colony, Gachibowli , Hy..'
+  );
+  const [showLocationModal, setShowLocationModal] = useState(false);
 
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
+
+  const resolveProductIdentity = (product) => {
+    const variant = product?.variant || product?.selectedVariant || product?.variants?.[0] || {};
+    return {
+      productId: product?.productId || product?.id || variant?.productId || null,
+      variantId: product?.variantId || variant?.variantId || variant?.id || null,
+    };
+  };
+
+  const sameCatalogItem = (left, right) =>
+    Boolean(left?.productId && left?.variantId && right?.productId && right?.variantId && left.productId === right.productId && left.variantId === right.variantId);
+
+  const catalogItemKey = (item) => `${item?.productId || ''}:${item?.variantId || ''}`;
+
+  const buildCartItem = (product) => {
+    if (!product) return null;
+    const identity = resolveProductIdentity(product);
+    if (!identity.productId || !identity.variantId) return null;
+    const variant = product.variant || product.selectedVariant || product.variants?.find((item) => (item.variantId || item.id) === identity.variantId) || product.variants?.[0] || {};
+    return {
+      ...product,
+      id: identity.productId,
+      productId: identity.productId,
+      variantId: identity.variantId,
+      title: product.title || product.name || 'Product',
+      weight: product.weight || variant.label || variant.weight || variant.name || '',
+      price: Number(variant.price ?? product.price ?? 0),
+      image: product.image || variant.image || '',
+    };
+  };
+
+  const loadCatalog = async () => {
+    setCatalogLoading(true);
+    setCatalogError(null);
+    try {
+      const [productsResponse, categoriesResponse] = await Promise.all([
+        getProducts({ status: 'ACTIVE' }),
+        getCategories(),
+      ]);
+      setCatalogProducts(adaptProductList(productsResponse || []));
+      setCatalogCategories(adaptCategoryList(categoriesResponse || []));
+    } catch (error) {
+      const useDummyCatalog = dummyCatalogEnabled();
+      console.warn('Catalog API unavailable.', error);
+      setCatalogProducts(useDummyCatalog ? adaptProductList(filterDummyProducts()) : []);
+      setCatalogCategories(useDummyCatalog ? adaptCategoryList(dummyCategories) : []);
+      setCatalogError(useDummyCatalog ? null : error.message || 'The catalog service is unavailable.');
+    } finally {
+      setCatalogLoading(false);
+    }
+  };
+
+  const loadCatalogProducts = async (params = {}) => {
+    let response;
+    try {
+      response = await getProducts(params);
+    } catch (error) {
+      if (!dummyCatalogEnabled()) throw error;
+      response = filterDummyProducts(params);
+    }
+    const products = adaptProductList(response || []);
+    setCatalogProducts(products);
+    return products;
+  };
+
+  const loadCategoryProducts = async (categoryId, params = {}) => {
+    let response;
+    try {
+      response = await getCategoryProducts(categoryId, params);
+    } catch (error) {
+      if (!dummyCatalogEnabled()) throw error;
+      response = filterDummyProducts({ ...params, categoryId });
+    }
+    return adaptProductList(response || []);
+  };
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      loadCatalog();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('isLoggedIn', isLoggedIn);
@@ -47,6 +145,15 @@ export const AppProvider = ({ children }) => {
   useEffect(() => localStorage.setItem('user', JSON.stringify(user)), [user]);
   useEffect(() => localStorage.setItem('wishlistItems', JSON.stringify(wishlistItems)), [wishlistItems]);
   useEffect(() => localStorage.setItem('addresses', JSON.stringify(addresses)), [addresses]);
+  useEffect(() => {
+    if (!isLoggedIn || !localStorage.getItem('authToken')) return;
+    customerProfileService.addresses().then((items) => {
+      const mapped = items.map((item) => ({ ...item, isDefault: item.defaultAddress, coordinates: item.latitude != null && item.longitude != null ? { lat:item.latitude, lng:item.longitude } : null, manualLocation: item.street ? { street:item.street, city:item.city || '', state:item.state || '', pincode:item.pincode || '' } : null }));
+      setAddresses(mapped);
+      const selected = mapped.find((item) => item.isDefault) || mapped[0];
+      if (selected) setDeliveryAddress(selected.address);
+    }).catch((error) => console.warn('Could not load addresses:', error.message));
+  }, [isLoggedIn]);
   useEffect(() => localStorage.setItem('savedForLater', JSON.stringify(savedForLater)), [savedForLater]);
 
   const login = (authenticatedUser, token) => {
@@ -77,32 +184,27 @@ export const AppProvider = ({ children }) => {
   };
 
   const addToCart = (product) => {
-    const itemToAdd = (product && product.title) ? product : {
-      id: 'default-1',
-      title: "Avakaya Pickle",
-      weight: '500g',
-      price: '199',
-      image: ''
-    };
+    const itemPayload = buildCartItem(product);
+    if (!itemPayload) return;
 
-    triggerAddedPopup(itemToAdd);
+    triggerAddedPopup(itemPayload);
 
     setCartItems((prevItems) => {
-      const existing = prevItems.find((item) => item.title === itemToAdd.title && item.weight === itemToAdd.weight);
+      const existing = prevItems.find((item) => sameCatalogItem(item, itemPayload));
       if (existing) {
-        return prevItems.map((item) =>
-          item.title === itemToAdd.title && item.weight === itemToAdd.weight ? { ...item, quantity: item.quantity + 1 } : item
-        );
+        return prevItems.map((item) => {
+          return sameCatalogItem(item, itemPayload) ? { ...item, quantity: item.quantity + 1 } : item;
+        });
       }
-      return [...prevItems, { ...itemToAdd, quantity: 1 }];
+      return [...prevItems, { ...itemPayload, quantity: 1 }];
     });
   };
 
-  const updateQuantity = (title, delta, weight) => {
+  const updateQuantity = (productId, variantId, delta) => {
     setCartItems((prevItems) =>
       prevItems
         .map((item) => {
-          if (item.title === title && (!weight || item.weight === weight)) {
+          if (sameCatalogItem(item, { productId, variantId })) {
             const newQty = item.quantity + delta;
             return newQty > 0 ? { ...item, quantity: newQty } : null;
           }
@@ -112,52 +214,36 @@ export const AppProvider = ({ children }) => {
     );
   };
 
-  const removeFromCart = (title, weight) => setCartItems((items) => items.filter((item) => item.title !== title || (weight && item.weight !== weight)));
+  const removeFromCart = (productId, variantId) => setCartItems((items) => items.filter((item) => !sameCatalogItem(item, { productId, variantId })));
   const toggleWishlist = (product) => setWishlistItems((items) => {
-    const exists = items.some((item) => item.title === product.title);
-    return exists ? items.filter((item) => item.title !== product.title) : [...items, product];
+    const itemPayload = buildCartItem(product);
+    if (!itemPayload) return items;
+    const exists = items.some((item) => sameCatalogItem(item, itemPayload));
+    return exists ? items.filter((item) => !sameCatalogItem(item, itemPayload)) : [...items, itemPayload];
   });
   const moveWishlistToCart = (product) => {
     addToCart(product);
-    setWishlistItems((items) => items.filter((item) => item.title !== product.title));
+    const itemPayload = buildCartItem(product);
+    setWishlistItems((items) => items.filter((item) => !sameCatalogItem(item, itemPayload)));
   };
   const saveItemForLater = (product) => {
-    setSavedForLater((items) => items.some((item) => item.title === product.title) ? items : [...items, product]);
-    removeFromCart(product.title, product.weight);
+    setSavedForLater((items) => items.some((item) => sameCatalogItem(item, product)) ? items : [...items, product]);
+    removeFromCart(product.productId, product.variantId);
   };
   const restoreSavedItem = (product) => {
     addToCart(product);
-    setSavedForLater((items) => items.filter((item) => item.title !== product.title));
+    setSavedForLater((items) => items.filter((item) => !sameCatalogItem(item, product)));
   };
-  const addAddress = (address) => setAddresses((items) => {
-    const next = { ...address, id: address.id || crypto.randomUUID(), isDefault: items.length === 0 || address.isDefault };
-    return next.isDefault ? [...items.map((item) => ({ ...item, isDefault: false })), next] : [...items, next];
-  });
-  const deleteAddress = (id) => setAddresses((items) => {
-    const removed = items.find((item) => item.id === id);
-    const remaining = items.filter((item) => item.id !== id);
-    if (removed?.isDefault && remaining.length) {
-      remaining[0] = { ...remaining[0], isDefault: true };
-      setDeliveryAddress(remaining[0].address);
-    }
-    if (!remaining.length) setDeliveryAddress('');
-    return remaining;
-  });
-  const setDefaultAddress = (id) => setAddresses((items) => {
-    const selected = items.find((item) => item.id === id);
-    if (selected) setDeliveryAddress(selected.address);
-    return items.map((item) => ({ ...item, isDefault: item.id === id }));
-  });
-  const updateAddress = (id, address) => setAddresses((items) => items.map((item) => item.id === id ? { ...item, ...address, id } : item));
+  const addAddress = async (address) => {
+    const saved = await customerProfileService.createAddress({ ...address, isDefault: addresses.length === 0 || address.isDefault });
+    const next = { ...saved, isDefault:saved.defaultAddress, coordinates:saved.latitude != null ? {lat:saved.latitude,lng:saved.longitude}:null, manualLocation:saved.street?{street:saved.street,city:saved.city||'',state:saved.state||'',pincode:saved.pincode||''}:null };
+    setAddresses((items) => next.isDefault ? [...items.map((item)=>({...item,isDefault:false})),next] : [...items,next]);
+    if(next.isDefault) setDeliveryAddress(next.address); return next;
+  };
+  const deleteAddress = async (id) => { await customerProfileService.deleteAddress(id); const remaining=addresses.filter((item)=>item.id!==id); if(remaining.length&&!remaining.some((item)=>item.isDefault))remaining[0]={...remaining[0],isDefault:true}; setAddresses(remaining); setDeliveryAddress((remaining.find((item)=>item.isDefault)||remaining[0])?.address||''); };
+  const setDefaultAddress = async (id) => { const saved=await customerProfileService.setDefaultAddress(id); setAddresses((items)=>items.map((item)=>({...item,isDefault:item.id===id}))); setDeliveryAddress(saved.address); };
+  const updateAddress = async (id,address) => { const saved=await customerProfileService.updateAddress(id,{...address,isDefault:addresses.find((item)=>item.id===id)?.isDefault}); const next={...saved,isDefault:saved.defaultAddress,coordinates:saved.latitude!=null?{lat:saved.latitude,lng:saved.longitude}:null,manualLocation:saved.street?{street:saved.street,city:saved.city||'',state:saved.state||'',pincode:saved.pincode||''}:null}; setAddresses((items)=>items.map((item)=>item.id===id?next:item)); if(next.isDefault)setDeliveryAddress(next.address); return next; };
 
-  const [selectedCategory, setSelectedCategory] = useState('All');
-  const [selectedProduct, setSelectedProduct] = useState(null);
-  const [userCity, setUserCity] = useState('Hyderabad, Telangana');
-  const [homeSearchQuery, setHomeSearchQuery] = useState('');
-  const [deliveryAddress, setDeliveryAddress] = useState(
-    'Home, Dno: 401, indira nagar, colony, Gachibowli , Hy..'
-  );
-  const [showLocationModal, setShowLocationModal] = useState(false);
   const [locale, setLocale] = useState(() => ({ language:localStorage.getItem('language') || 'English', currency:localStorage.getItem('currency') || 'INR', timeZone:localStorage.getItem('timeZone') || Intl.DateTimeFormat().resolvedOptions().timeZone }));
   const translations = {
     English: { home:'Home',categories:'Categories',profile:'Profile',wishlist:'Wishlist',cart:'Cart',notifications:'Notifications',search:'Search products' },
@@ -237,6 +323,16 @@ export const AppProvider = ({ children }) => {
         addToCart,
         updateQuantity,
         removeFromCart,
+        catalogProducts,
+        catalogCategories,
+        catalogLoading,
+        catalogError,
+        loadCatalog,
+        loadCatalogProducts,
+        loadCategoryProducts,
+        resolveProductIdentity,
+        sameCatalogItem,
+        catalogItemKey,
         wishlistItems,
         toggleWishlist,
         moveWishlistToCart,

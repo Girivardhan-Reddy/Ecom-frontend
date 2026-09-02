@@ -4,7 +4,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useNavigate } from 'react-router-dom';
 import { AppContext } from '../../context/AppContext';
 import BottomNav from '../../components/BottomNav/BottomNav';
-import { profileStore } from '../../services/localDataService';
+import { customerProfileService } from '../../services/customerProfileService';
 import './DeleteAccountPage.css';
 
 const DeleteAccountPage = () => {
@@ -30,7 +30,7 @@ const DeleteAccountPage = () => {
       return;
     }
     try {
-      await profileStore.remove();
+      await customerProfileService.remove();
       logout();
       navigate('/intro');
     } catch (error) {

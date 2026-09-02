@@ -1,4 +1,4 @@
-const ORG_ACCESS_BASE_URL = (import.meta.env.VITE_ORG_ACCESS_URL || 'http://localhost:30082/org-access').replace(/\/$/, '');
+const ORG_ACCESS_BASE_URL = (import.meta.env.VITE_ORG_ACCESS_URL || '/org-access').replace(/\/$/, '');
 
 const normalizeRole = (role) => {
   if (!role) return null;

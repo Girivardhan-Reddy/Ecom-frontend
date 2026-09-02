@@ -8,7 +8,7 @@ import { promotionApplies,resolvedPromotionScope } from '../../services/promotio
 
 const CheckoutPage = () => {
   const navigate = useNavigate();
-  const { cartItems, deliveryAddress, user, addresses, formatCurrency, userCity } = useContext(AppContext);
+  const { cartItems, deliveryAddress, user, addresses, formatCurrency, userCity, catalogProducts } = useContext(AppContext);
   useEffect(() => { if (!hasCompleteProfile(user, addresses)) navigate('/profile', { replace: true, state: { completeProfile: true, returnTo: '/checkout' } }); }, [user, addresses, navigate]);
   const [method, setMethod] = useState('standard');
   const [date, setDate] = useState('');
@@ -26,7 +26,6 @@ const CheckoutPage = () => {
   const subtotal = useMemo(() => cartItems.reduce((sum, item) => sum + Number(item.price) * item.quantity, 0), [cartItems]);
   const deliveryFee = method === 'express' ? 49 : method === 'instant' ? 29 : 0;
   const localCoupons = JSON.parse(localStorage.getItem('local:coupons') || '[]');
-  const catalogProducts=collectionStore.list('products');
   const discountValue = Number(appliedCoupon?.discount || 0);
   const calculatedDiscount = appliedCoupon?.discountType === 'Fixed' ? discountValue : Math.round(subtotal * discountValue / 100);
   const discount = appliedCoupon ? Math.min(calculatedDiscount, Number(appliedCoupon.maximumDiscount || calculatedDiscount), subtotal) : 0;
@@ -41,7 +40,7 @@ const CheckoutPage = () => {
       setAppliedCoupon(null);
       return setCouponMessage('Coupon not found or inactive.');
     }
-    const sources=cartItems.map((item)=>catalogProducts.find((product)=>product.id===item.id)).filter(Boolean);
+    const sources=cartItems.map((item)=>catalogProducts.find((product)=>product.productId===item.productId)).filter(Boolean);
     const scoped=resolvedPromotionScope(match);const customerLocation=collectionStore.list('locations').find((item)=>userCity.toLowerCase().includes(item.name.toLowerCase()))?.name||'';const sourceStore=sources.length&&sources.every((item)=>item.store===sources[0].store)?sources[0].store:'';
     const applies=promotionApplies(scoped,{location:customerLocation,store:sourceStore});
     if(!applies){setAppliedCoupon(null);return setCouponMessage(`This coupon is only valid for ${scoped.scope==='Store'?scoped.store:scoped.location||'all India'}.`);}

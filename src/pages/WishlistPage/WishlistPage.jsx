@@ -19,6 +19,9 @@ const WishlistPage = () => {
 
   const handleCardClick = (item) => {
     setSelectedProduct({
+      ...item,
+      productId: item.productId,
+      variantId: item.variantId,
       title: item.title,
       weight: item.weight,
       price: item.price,
@@ -28,7 +31,7 @@ const WishlistPage = () => {
       aboutSource: `Our ${item.title} is prepared using fresh ingredients sourced from local farms.`,
       image: item.image,
     });
-    navigate('/product-info');
+    navigate(`/product-info/${encodeURIComponent(item.productId)}`);
   };
 
   return (
@@ -49,8 +52,8 @@ const WishlistPage = () => {
       <Box className="wishlist-scroll-content">
         {filteredItems.length > 0 ? (
           <Box className="wishlist-grid">
-            {filteredItems.map((item, idx) => (
-              <Box key={idx} className="wishlist-card" onClick={() => handleCardClick(item)}>
+            {filteredItems.map((item) => (
+              <Box key={`${item.productId}:${item.variantId}`} className="wishlist-card" onClick={() => handleCardClick(item)}>
                 <Box className="wishlist-img-wrap">
                   <img src={item.image} alt={item.title} className="wishlist-img" />
                   <IconButton aria-label={`Remove ${item.title} from wishlist`} className="remove-heart-btn" onClick={(e) => { e.stopPropagation(); toggleWishlist(item); }}>

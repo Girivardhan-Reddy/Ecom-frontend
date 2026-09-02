@@ -22,6 +22,11 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/catalog/, ''),
       },
+      '/inventory': {
+        target: 'http://127.0.0.1:8090',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/inventory/, ''),
+      },
       '/alerts': {
         target: 'http://127.0.0.1:8082',
         changeOrigin: true,

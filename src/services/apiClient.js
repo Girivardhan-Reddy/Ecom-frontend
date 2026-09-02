@@ -21,7 +21,7 @@ export const apiRequest = async (baseUrl, path, options = {}) => {
   });
   if (response.status === 204) return null;
   const text = await response.text();
-  let payload = null;
+  let payload;
   try { payload = text ? JSON.parse(text) : null; } catch { payload = text; }
   if (!response.ok) {
     const validation = payload?.fields ? Object.values(payload.fields).join(' ') : '';

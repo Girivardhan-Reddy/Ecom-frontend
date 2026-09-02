@@ -14,8 +14,6 @@ const write = (key, value) => {
 };
 
 const delay = (value, ms = 250) => new Promise((resolve) => setTimeout(() => resolve(value), ms));
-const CITY_COORDINATES={Hyderabad:[17.385,78.4867],Visakhapatnam:[17.6868,83.2185],Chennai:[13.0827,80.2707],Bengaluru:[12.9716,77.5946],Mumbai:[19.076,72.8777],Delhi:[28.6139,77.209],Kochi:[9.9312,76.2673],Pune:[18.5204,73.8567],Kolkata:[22.5726,88.3639],Ahmedabad:[23.0225,72.5714]};
-const distanceKm=(from,to)=>{if(!from||!to)return Number.MAX_SAFE_INTEGER;const rad=(value)=>value*Math.PI/180;const dLat=rad(to[0]-from[0]);const dLon=rad(to[1]-from[1]);const a=Math.sin(dLat/2)**2+Math.cos(rad(from[0]))*Math.cos(rad(to[0]))*Math.sin(dLon/2)**2;return Math.round(6371*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)));};
 
 export const DEMO_OTP = '123456';
 
@@ -134,24 +132,12 @@ export const orderStore = {
     const current=read('orders',[]).find((order)=>order.id===id);
     if(!current||current.fulfillmentType!=='global') throw new Error('Global order not found.');
     if(current.globalApproval==='Approved') throw new Error('This global order is already approved and transferred.');
-    const stores=read('local:stores',[]);const inventory=read('local:inventory',[]);
-    const destination=String(current.destinationLocation||current.checkout?.customerLocation||'').toLowerCase();
-    const assignments=(current.items||[]).map((requested)=>{const candidates=stores.map((store)=>{const stockRecord=inventory.find((item)=>item.productId===(requested.productId||requested.id)&&(!item.storeId||item.storeId===store.id));return {product:{id:requested.productId||requested.id,name:requested.title},store,stock:Number(stockRecord?.stock??0)};}).filter((candidate)=>candidate.store&&candidate.store.status!=='Inactive'&&candidate.stock>=Number(requested.quantity||1));const selected=candidates.find((candidate)=>destination.includes(String(candidate.store.location||candidate.store.city).toLowerCase()))||candidates.find((candidate)=>candidate.store.name===requested.sourceStore)||candidates[0];if(!selected)throw new Error(`${requested.title} is unavailable in every active store.`);return {item:requested,selected};});
-    const selected=assignments[0]?.selected;
-    if(!selected) throw new Error('This order has no fulfilment items.');
-    const approvedAt=new Date().toISOString();
-    const assignedItems=assignments.map(({item,selected:source})=>({...item,id:source.product.id,sourceStore:source.store.name,sourceLocation:source.store.location,sourceState:source.store.state}));
-    const fulfilmentAssignments=[...new Map(assignments.map(({selected:source})=>[source.store.id,{storeId:source.store.id,store:source.store.name,location:source.store.location,state:source.store.state,status:'Assigned',assignedAt:approvedAt}])).values()];
-    const orders=read('orders',[]).map((order)=>order.id===id?{...order,items:assignedItems,fulfilmentAssignments,globalApproval:'Approved',globalApprovedAt:approvedAt,status:'Confirmed',transferredToStore:true,assignmentMethod:destination.includes(String(selected.store.location).toLowerCase())?'Nearest stocked store':'Source stocked store',assignedStoreId:selected.store.id,sourceStore:selected.store.name,sourceStoreId:selected.store.id,sourceLocation:selected.store.location,sourceState:selected.store.state,store:selected.store.name,location:selected.store.location}:order);
-    write('orders',orders);
-    write('notifications',[{id:crypto.randomUUID(),title:'Global order transferred',message:`${id} was assigned to ${selected.store.name}, ${selected.store.location}, based on product availability and customer proximity.`,type:'order',orderId:id,read:false,createdAt:approvedAt},...read('notifications',[])]);
-    return orders.find((order)=>order.id===id);
+    throw new Error('Inventory backend integration is required before global stock assignment can be approved.');
   },
   globalStoreOptions(id) {
     const order=read('orders',[]).find((item)=>item.id===id);
     if(!order||order.fulfillmentType!=='global') return [];
-    const stores=read('local:stores',[]);const inventory=read('local:inventory',[]);const destinationName=Object.keys(CITY_COORDINATES).find((city)=>String(order.destinationLocation||order.checkout?.customerLocation||'').toLowerCase().includes(city.toLowerCase()));const origin=CITY_COORDINATES[destinationName];
-    return stores.filter((store)=>store.status!=='Inactive').map((store)=>{const matches=(order.items||[]).map((requested)=>{const product={id:requested.productId||requested.id,name:requested.title};const stockRecord=inventory.find((item)=>item.productId===product.id&&(!item.storeId||item.storeId===store.id));const stock=Number(stockRecord?.stock??0);return {requested,product,stock,available:Boolean(product.id)&&stock>=Number(requested.quantity||1)};});const kilometres=distanceKm(origin,CITY_COORDINATES[store.location||store.city]);return {store,matches,kilometres,distanceLabel:kilometres===0?'Same city':kilometres===Number.MAX_SAFE_INTEGER?'Distance unavailable':`${kilometres.toLocaleString('en-IN')} km away`,eligible:matches.length>0&&matches.every((item)=>item.available)};}).filter((option)=>option.eligible).sort((a,b)=>a.kilometres-b.kilometres||a.store.name.localeCompare(b.store.name));
+    return [];
   },
   assignGlobalStore(id, storeId) {
     const current=read('orders',[]).find((order)=>order.id===id);if(!current)throw new Error('Order not found.');if(current.globalApproval==='Approved')throw new Error('This order has already been assigned.');

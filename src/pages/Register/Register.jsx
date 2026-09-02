@@ -22,17 +22,21 @@ const Register = () => {
   const navigate = useNavigate();
 
   const [fullName, setFullName] = useState("");
+  const [username, setUsername] = useState("");
   const [countryCode, setCountryCode] = useState("+91");
   const [mobileNumber, setMobileNumber] = useState("");
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [agreed] = useState(true);
   const [submitError, setSubmitError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [errors, setErrors] = useState({
     fullName: "",
+    username: "",
     mobileNumber: "",
-    email: ""
+    email: "",
+    password: ""
   });
 
   const handleMobileChange = (e) => {
@@ -52,6 +56,11 @@ const Register = () => {
     }
   };
 
+  const handleUsernameChange = (e) => {
+    setUsername(e.target.value.replace(/\s/g, ""));
+    if (errors.username) setErrors((prev) => ({ ...prev, username: "" }));
+  };
+
   const handleEmailChange = (e) => {
     setEmail(e.target.value);
     if (errors.email) {
@@ -59,12 +68,22 @@ const Register = () => {
     }
   };
 
+  const handlePasswordChange = (e) => {
+    setPassword(e.target.value);
+    if (errors.password) setErrors((prev) => ({ ...prev, password: "" }));
+  };
+
   const validateForm = () => {
     let isValid = true;
-    const newErrors = { fullName: "", mobileNumber: "", email: "" };
+    const newErrors = { fullName: "", username: "", mobileNumber: "", email: "", password: "" };
 
     if (!fullName.trim()) {
       newErrors.fullName = "Full name is required";
+      isValid = false;
+    }
+
+    if (!username.trim()) {
+      newErrors.username = "Username is required";
       isValid = false;
     }
 
@@ -73,12 +92,20 @@ const Register = () => {
       isValid = false;
     }
 
-    if (email.trim()) {
+    if (!email.trim()) {
+      newErrors.email = "Email is required";
+      isValid = false;
+    } else {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(email.trim())) {
         newErrors.email = "Please enter a valid email address";
         isValid = false;
       }
+    }
+
+    if (password.length < 8) {
+      newErrors.password = "Password must contain at least 8 characters";
+      isValid = false;
     }
 
     setErrors(newErrors);
@@ -93,7 +120,7 @@ const Register = () => {
       setIsSubmitting(true);
       try {
         await authStore.requestOtp(fullPhone);
-        navigate("/register-otp", { state: { phoneNumber: fullPhone, registration: { fullName, email } } });
+        navigate("/register-otp", { state: { phoneNumber: fullPhone, registration: { fullName, username, email, password } } });
       } catch (requestError) {
         setSubmitError(requestError.message);
       } finally {
@@ -102,7 +129,7 @@ const Register = () => {
     }
   };
 
-  const isFormValid = fullName.trim() !== "" && mobileNumber.trim() !== "" && email.trim() !== "";
+  const isFormValid = fullName.trim() !== "" && username.trim() !== "" && mobileNumber.trim() !== "" && email.trim() !== "" && password.length >= 8;
 
   return (
     <Box className="register-wrapper">
@@ -160,6 +187,18 @@ const Register = () => {
                       className: "custom-input"
                     }
                   }}
+                />
+              </Box>
+
+              <Box className="input-group">
+                <TextField
+                  fullWidth
+                  placeholder="Choose Username"
+                  value={username}
+                  onChange={handleUsernameChange}
+                  error={!!errors.username}
+                  helperText={errors.username}
+                  variant="outlined"
                 />
               </Box>
 
@@ -221,6 +260,19 @@ const Register = () => {
                       className: "custom-input"
                     }
                   }}
+                />
+              </Box>
+
+              <Box className="input-group">
+                <TextField
+                  fullWidth
+                  type="password"
+                  placeholder="Create Password (minimum 8 characters)"
+                  value={password}
+                  onChange={handlePasswordChange}
+                  error={!!errors.password}
+                  helperText={errors.password}
+                  variant="outlined"
                 />
               </Box>
 

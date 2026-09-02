@@ -17,6 +17,16 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/customer-profile/, ''),
       },
+      '/catalog': {
+        target: 'http://127.0.0.1:8089',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/catalog/, ''),
+      },
+      '/alerts': {
+        target: 'http://127.0.0.1:8082',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/alerts/, ''),
+      },
     },
   },
 })

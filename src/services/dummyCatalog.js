@@ -116,8 +116,7 @@ export const dummyStoreProducts = [
   product: dummyProducts.find((item) => item.productId === productId),
 }));
 
-export const dummyCatalogEnabled = () =>
-  import.meta.env.DEV || import.meta.env.VITE_ENABLE_DUMMY_CATALOG === 'true';
+export const dummyCatalogEnabled = () => import.meta.env.VITE_ENABLE_DUMMY_CATALOG === 'true';
 
 export const filterDummyProducts = (params = {}) => {
   const term = String(params.search || params.q || '').trim().toLowerCase();

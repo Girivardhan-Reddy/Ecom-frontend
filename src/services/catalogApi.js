@@ -1,4 +1,5 @@
-const CATALOG_BASE_URL = (import.meta.env.VITE_CATALOG_URL || '/api').replace(/\/$/, '');
+import { apiRequest } from './apiClient';
+const CATALOG_BASE_URL = (import.meta.env.VITE_CATALOG_URL || '/catalog').replace(/\/$/, '');
 
 const buildQueryString = (params = {}) => {
   const search = new URLSearchParams();
@@ -10,39 +11,13 @@ const buildQueryString = (params = {}) => {
   return query ? `?${query}` : '';
 };
 
-const request = async (path, options = {}) => {
-  const response = await fetch(`${CATALOG_BASE_URL}${path}`, {
-    ...options,
-    headers: {
-      Accept: 'application/json',
-      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-      ...options.headers,
-    },
-  });
-
-  if (response.status === 204) return null;
-
-  const payload = await response.text();
-  const parsed = payload ? JSON.parse(payload) : null;
-
-  if (!response.ok) {
-    const errorMessage = parsed?.message || parsed?.error || parsed?.detail || `Catalog request failed (${response.status}).`;
-    const error = new Error(errorMessage);
-    error.status = response.status;
-    throw error;
-  }
-
-  if (parsed && typeof parsed === 'object' && 'data' in parsed && !Array.isArray(parsed.data) && parsed.data !== null && Object.keys(parsed).length === 3 && 'success' in parsed && 'message' in parsed) {
-    return parsed.data ?? null;
-  }
-  if (parsed && typeof parsed === 'object' && 'data' in parsed && 'page' in parsed) {
-    return parsed.data ?? parsed;
-  }
-  return parsed ?? null;
-};
+const request = (path, options = {}) => apiRequest(CATALOG_BASE_URL, path, options);
 
 export const getCategories = async () => request('/api/v1/categories');
 export const getCategory = async (categoryId) => request(`/api/v1/categories/${encodeURIComponent(categoryId)}`);
+export const createCategory = async (data) => request('/api/v1/categories', { method:'POST', body:JSON.stringify(data) });
+export const updateCategory = async (id, data) => request(`/api/v1/categories/${encodeURIComponent(id)}`, { method:'PUT', body:JSON.stringify(data) });
+export const deleteCategory = async (id) => request(`/api/v1/categories/${encodeURIComponent(id)}`, { method:'DELETE' });
 export const getCategoryProducts = async (categoryId, params = {}) => {
   if (!categoryId) return getProducts(params);
   return request(`/api/v1/categories/${encodeURIComponent(categoryId)}/products${buildQueryString(params)}`);
@@ -51,10 +26,19 @@ export const getCategoryProducts = async (categoryId, params = {}) => {
 export const getProducts = async (params = {}) => request(`/api/v1/products${buildQueryString(params)}`);
 export const searchProducts = async (params = {}) => getProducts(params);
 export const getProduct = async (productId) => request(`/api/v1/products/${encodeURIComponent(productId)}`);
+export const createProduct = async (data) => request('/api/v1/products', { method:'POST', body:JSON.stringify(data) });
+export const updateProduct = async (id, data) => request(`/api/v1/products/${encodeURIComponent(id)}`, { method:'PUT', body:JSON.stringify(data) });
+export const deleteProduct = async (id) => request(`/api/v1/products/${encodeURIComponent(id)}`, { method:'DELETE' });
 export const getProductVariants = async (productId) => request(`/api/v1/products/${encodeURIComponent(productId)}/variants`);
 export const getVariant = async (variantId) => request(`/api/v1/variants/${encodeURIComponent(variantId)}`);
+export const createVariant = async (productId, data) => request(`/api/v1/products/${encodeURIComponent(productId)}/variants`, { method:'POST', body:JSON.stringify(data) });
+export const updateVariant = async (id, data) => request(`/api/v1/variants/${encodeURIComponent(id)}`, { method:'PUT', body:JSON.stringify(data) });
+export const deleteVariant = async (id) => request(`/api/v1/variants/${encodeURIComponent(id)}`, { method:'DELETE' });
 export const getProductImages = async (productId) => request(`/api/v1/products/${encodeURIComponent(productId)}/images`);
 export const getImage = async (imageId) => request(`/api/v1/images/${encodeURIComponent(imageId)}`);
+export const createImage = async (productId, data) => request(`/api/v1/products/${encodeURIComponent(productId)}/images`, { method:'POST', body:JSON.stringify(data) });
+export const updateImage = async (id, data) => request(`/api/v1/images/${encodeURIComponent(id)}`, { method:'PUT', body:JSON.stringify(data) });
+export const deleteImage = async (id) => request(`/api/v1/images/${encodeURIComponent(id)}`, { method:'DELETE' });
 export const getStoreProducts = async (storeId, params = {}) => {
   const query = new URLSearchParams();
   if (storeId) query.set('storeId', String(storeId));
@@ -63,3 +47,6 @@ export const getStoreProducts = async (storeId, params = {}) => {
   });
   return request(`/api/v1/store-products${query.toString() ? `?${query.toString()}` : ''}`);
 };
+export const createStoreProduct = async (data) => request('/api/v1/store-products', { method:'POST', body:JSON.stringify(data) });
+export const updateStoreProduct = async (id, data) => request(`/api/v1/store-products/${encodeURIComponent(id)}`, { method:'PUT', body:JSON.stringify(data) });
+export const deleteStoreProduct = async (id) => request(`/api/v1/store-products/${encodeURIComponent(id)}`, { method:'DELETE' });

@@ -7,6 +7,8 @@ import logo from "../../assets/images/logo.png";
 import "./OTPVerification.css";
 import TermsAndConditons from "../TermsAndConditions/TermsAndConditons";
 import { authStore, DEMO_OTP } from '../../services/localDataService';
+import { orgAccessService } from '../../services/orgAccessService';
+import { customerProfileService } from '../../services/customerProfileService';
 
 const OTPVerification = () => {
   const navigate = useNavigate();
@@ -108,7 +110,31 @@ const OTPVerification = () => {
     setSubmitError('');
     setIsSubmitting(true);
     try {
-      const result = await authStore.verifyOtp(phoneNumber, otpCode, location.state?.registration);
+      let result = await authStore.verifyOtp(phoneNumber, otpCode, location.state?.registration);
+      if (!isLogin) {
+        const registration = location.state?.registration;
+        if (!registration?.username || !registration?.email || !registration?.password) {
+          throw new Error('Registration details are missing. Please return to the registration form.');
+        }
+        const account = await orgAccessService.registerCustomer({
+          username: registration.username,
+          email: registration.email,
+          password: registration.password,
+          name: registration.fullName,
+          phone: phoneNumber,
+        });
+        const authenticated = await orgAccessService.login(account.username, registration.password);
+        localStorage.setItem('authToken', authenticated.token);
+        const profile = await customerProfileService.save({
+          name: registration.fullName,
+          phone: phoneNumber,
+          email: registration.email,
+          gender: '',
+          dateOfBirth: '',
+          photo: null,
+        });
+        result = { user: { ...authenticated.user, ...profile }, token: authenticated.token, isNewUser: true };
+      }
       login(result.user, result.token);
       setShowLocationModal(false);
       navigate(result.isNewUser ? '/language' : '/home', result.isNewUser ? { state: { onboarding: true, returnTo: location.state?.from || '/home' } } : { replace: true });

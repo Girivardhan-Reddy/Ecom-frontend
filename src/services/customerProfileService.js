@@ -1,26 +1,6 @@
+import { apiRequest } from './apiClient';
 const PROFILE_BASE_URL = (import.meta.env.VITE_CUSTOMER_PROFILE_URL || '/customer-profile').replace(/\/$/, '');
-
-const token = () => localStorage.getItem('authToken');
-
-const request = async (path, options = {}) => {
-  const response = await fetch(`${PROFILE_BASE_URL}${path}`, {
-    ...options,
-    headers: {
-      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-      Authorization: `Bearer ${token() || ''}`,
-      ...options.headers,
-    },
-  });
-  if (response.status === 204) return null;
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const validation = payload.fields ? Object.values(payload.fields).join(' ') : '';
-    const error = new Error(validation || payload.message || payload.error || `Profile request failed (${response.status}).`);
-    error.status = response.status;
-    throw error;
-  }
-  return payload;
-};
+const request = (path, options = {}) => apiRequest(PROFILE_BASE_URL, path, options);
 
 const genderToApi = { Female: 'FEMALE', Male: 'MALE', Other: 'OTHER', 'Prefer not to say': 'PREFER_NOT_TO_SAY' };
 const genderFromApi = { FEMALE: 'Female', MALE: 'Male', OTHER: 'Other', PREFER_NOT_TO_SAY: 'Prefer not to say' };

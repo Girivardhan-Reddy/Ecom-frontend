@@ -44,6 +44,9 @@ export const normalizeOrderItem = (item = {}) => ({
 
 export const normalizeOrder = (order = {}) => {
   const items = (Array.isArray(order.items) ? order.items : Array.isArray(order.orderItems) ? order.orderItems : []).map(normalizeOrderItem);
+  const addresses = Array.isArray(order.addresses) ? order.addresses : [];
+  const shippingAddress = order.shippingAddress || addresses.find((address) => address.addressType === 'SHIPPING') || addresses[0] || null;
+  const billingAddress = order.billingAddress || addresses.find((address) => address.addressType === 'BILLING') || shippingAddress;
   return {
     ...order,
     id: order.id || order.orderId || '',
@@ -52,6 +55,9 @@ export const normalizeOrder = (order = {}) => {
     paymentStatus: PAYMENT_STATUSES.includes(order.paymentStatus) ? order.paymentStatus : 'PENDING',
     totalAmount: Number(order.totalAmount ?? order.total ?? 0),
     items,
+    addresses,
+    shippingAddress,
+    billingAddress,
   };
 };
 
@@ -64,10 +70,37 @@ export const buildOrderItemsPayload = (cartItems = []) =>
     unitPrice: Number(item.unitPrice ?? item.price ?? 0),
   }));
 
-export const buildAddressPayload = (address = {}, fallbackText = '') => ({
-  addressLine1: address.addressLine1 || address.street || address.manualLocation?.street || address.address || fallbackText || '',
-  city: address.city || address.manualLocation?.city || '',
-  state: address.state || address.manualLocation?.state || '',
-  country: address.country || 'India',
-  postalCode: address.postalCode || address.pincode || address.manualLocation?.pincode || '',
-});
+const parseAddressText = (text = '') => {
+  const raw = String(text || '').trim();
+  const parts = raw.split(',').map((part) => part.trim()).filter(Boolean);
+  const postalMatch = raw.match(/\b\d{5,6}\b/);
+  const state = parts.find((part) => part.toLowerCase().includes('telangana')) || '';
+  const city = parts.find((part) => part.toLowerCase().includes('hyderabad')) || '';
+  return {
+    addressLine1: parts.slice(0, 4).join(', ') || raw || 'Customer address',
+    city,
+    state,
+    country: parts.find((part) => part.toLowerCase() === 'india') || 'India',
+    postalCode: postalMatch?.[0] || '',
+  };
+};
+
+export const buildAddressPayload = (address = {}, fallbackText = '') => {
+  const parsed = parseAddressText(address.address || fallbackText);
+  return {
+    addressLine1: address.addressLine1 || address.street || address.manualLocation?.street || parsed.addressLine1,
+    addressLine2: address.addressLine2 || [address.houseNumber, address.floor, address.landmark].filter(Boolean).join(', ') || null,
+    city: address.city || address.manualLocation?.city || parsed.city || 'Hyderabad',
+    state: address.state || address.manualLocation?.state || parsed.state || 'Telangana',
+    country: address.country || parsed.country || 'India',
+    postalCode: address.postalCode || address.pincode || address.manualLocation?.pincode || parsed.postalCode || '500001',
+  };
+};
+
+export const buildOrderAddressesPayload = (address = {}, fallbackText = '') => {
+  const payload = buildAddressPayload(address, fallbackText);
+  return [
+    { ...payload, addressType: 'SHIPPING' },
+    { ...payload, addressType: 'BILLING' },
+  ];
+};

@@ -10,7 +10,7 @@ import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import PhoneAndroidIcon from '@mui/icons-material/PhoneAndroid';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { AppContext } from '../../context/AppContext';
-import { buildAddressPayload, buildOrderItemsPayload, createOrder, isOrderServiceUnavailable, normalizeOrder } from '../../services/orderApi';
+import { buildOrderAddressesPayload, buildOrderItemsPayload, createOrder, isOrderServiceUnavailable, normalizeOrder } from '../../services/orderApi';
 import './PaymentOptions.css';
 
 const methods = [
@@ -64,27 +64,21 @@ const PaymentOptions = () => {
     window.setTimeout(async() => {
       try {
         const defaultAddress = addresses.find((address) => address.isDefault) || addresses[0] || {};
-        const shippingAddress = buildAddressPayload(defaultAddress, checkout.deliveryAddress);
+        const addressesPayload = buildOrderAddressesPayload(defaultAddress, checkout.deliveryAddress);
         const order = normalizeOrder(await createOrder({
           customerId: user.id,
           cartId: activeCart.id,
           storeId: activeCart.storeId,
           items: buildOrderItemsPayload(cartItems),
-          shippingAddress,
-          billingAddress: shippingAddress,
+          addresses: addressesPayload,
           paymentStatus: 'PAID',
-          paymentMethod: method,
-          notes: checkout.notes || '',
-          deliveryMethod: checkout.method || 'standard',
-          scheduledDate: checkout.date || null,
-          scheduledSlot: checkout.slot || null,
-          couponCode: checkout.coupon || '',
         }));
-        await clearCart();
+        clearCart().catch((error) => console.warn('Order created, but cart cleanup failed:', error));
         setResult({ order });
         setStatus('succeeded');
       } catch (error) {
-        setError(isOrderServiceUnavailable(error) ? 'Order Service is unavailable. Please try again when backend is online.' : error.message);
+        console.warn('Order creation failed:', error);
+        setError(isOrderServiceUnavailable(error) ? 'Order Service is unavailable. Please try again when backend is online.' : 'We could not place your order. Please check the delivery address and try again.');
         setStatus('failed');
       }
     },1400);
@@ -101,7 +95,7 @@ const PaymentOptions = () => {
         {method==='card'&&<Box className="method-form"><Typography variant="h6">Credit / Debit Card</Typography><TextField label="Card number" placeholder="1234 5678 9012 3456" value={card.number.replace(/(.{4})/g,'$1 ').trim()} onChange={(event)=>setCard({...card,number:event.target.value.replace(/\D/g,'').slice(0,16)})} fullWidth/><Box className="field-row"><TextField label="Expiry date" placeholder="MM/YY" value={card.expiry} onChange={(event)=>setCard({...card,expiry:event.target.value.slice(0,5)})}/><TextField label="CVV" type="password" placeholder="123" value={card.cvv} onChange={(event)=>setCard({...card,cvv:event.target.value.replace(/\D/g,'').slice(0,4)})}/></Box><TextField label="Cardholder name" value={card.name} onChange={(event)=>setCard({...card,name:event.target.value})} fullWidth/><FormControlLabel control={<Checkbox checked={saveCard} onChange={(event)=>setSaveCard(event.target.checked)}/>} label="Save card for this session"/></Box>}
         {method==='bank'&&<Box className="method-form"><Typography variant="h6">Net Banking</Typography><Typography color="text.secondary">Select your bank</Typography><Select displayEmpty value={bank} onChange={(event)=>setBank(event.target.value)} fullWidth><MenuItem value="" disabled>Select bank</MenuItem>{['State Bank of India','HDFC Bank','ICICI Bank','Axis Bank','Kotak Mahindra Bank'].map((item)=><MenuItem key={item} value={item}>{item}</MenuItem>)}</Select></Box>}
         {method==='wallet'&&<Box className="method-form"><Typography variant="h6">Wallets</Typography><Typography color="text.secondary">Choose a wallet</Typography><Box className="option-list">{['Amazon Pay','Mobikwik','Freecharge'].map((item)=><button type="button" key={item} className={wallet===item?'selected':''} onClick={()=>setWallet(item)}><span className="option-mark">{item.slice(0,2)}</span><span><strong>{item}</strong><small>Wallet payment</small></span><i>{wallet===item?'●':'○'}</i></button>)}</Box></Box>}
-        {status==='failed'&&<Box className="payment-error" role="alert"><ErrorOutlinedIcon/><Box><strong>Payment Failed</strong><span>{error || 'We could not complete the payment.'}</span></Box><Button onClick={()=>{setStatus('selecting');setError('');}}>Try Again</Button></Box>}
+        {status==='failed'&&<Box className="payment-error" role="alert"><ErrorOutlinedIcon/><Box><strong>Could not place order</strong><span>{error || 'Please try again in a moment.'}</span></Box><Button onClick={()=>{setStatus('selecting');setError('');}}>Try Again</Button></Box>}
         <Button className="payment-button" variant="contained" disabled={status==='submitting'} onClick={()=>pay()}>{status==='submitting'?<><CircularProgress size={19} color="inherit"/>Processing Payment...</>:`Pay ${formatCurrency(summary.total)}`}</Button><Box className="secure-note"><LockOutlinedIcon/><span><strong>Secure Checkout</strong>Your order will be created by the Order Service after payment confirmation.</span></Box>
       </Box></Box></section>
     </main>

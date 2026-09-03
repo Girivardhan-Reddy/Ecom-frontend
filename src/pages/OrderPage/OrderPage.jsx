@@ -8,6 +8,7 @@ import { AppContext } from '../../context/AppContext';
 import pickleJarImg from '../../assets/images/pickel-removebg-preview.png';
 import splashImg from '../../assets/images/splash-image.png';
 import { getOrder, getOrderItems, isOrderServiceUnavailable, normalizeOrder } from '../../services/orderApi';
+import { getPaymentByOrder, isPaymentServiceUnavailable, normalizePayment } from '../../services/paymentApi';
 import './OrderPage.css';
 
 const OrderPage = () => {
@@ -19,6 +20,8 @@ const OrderPage = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [unavailable, setUnavailable] = useState(false);
+  const [payment, setPayment] = useState(null);
+  const [paymentError, setPaymentError] = useState('');
   const requestedOrderId = routeOrderId || location.state?.orderId || location.state?.order?.id;
 
   useEffect(() => {
@@ -51,9 +54,28 @@ const OrderPage = () => {
     return () => { ignore = true; window.clearTimeout(timer); };
   }, [requestedOrderId]);
 
+  useEffect(() => {
+    if (!requestedOrderId) return undefined;
+    let ignore = false;
+    Promise.resolve().then(() => {
+      if (!ignore) setPaymentError('');
+      return getPaymentByOrder(requestedOrderId);
+    })
+      .then((payload) => {
+        if (!ignore) setPayment(normalizePayment(payload));
+      })
+      .catch((apiError) => {
+        if (ignore) return;
+        setPayment(null);
+        if (apiError.status !== 404) setPaymentError(isPaymentServiceUnavailable(apiError) ? 'Payment Service is unavailable.' : apiError.message);
+      });
+    return () => { ignore = true; };
+  }, [requestedOrderId]);
+
   const grandTotal = Number(order?.totalAmount || 0);
   const displayItems = order?.items || [];
-  const paymentPaid = order?.paymentStatus === 'PAID';
+  const paymentStatus = payment?.status || order?.paymentStatus || 'PENDING';
+  const paymentSuccessful = paymentStatus === 'SUCCESS';
   const shippingAddress = order?.shippingAddress;
   const addressText = shippingAddress
     ? [shippingAddress.addressLine1, shippingAddress.city, shippingAddress.state, shippingAddress.country, shippingAddress.postalCode].filter(Boolean).join(', ')
@@ -78,7 +100,7 @@ const OrderPage = () => {
       <Box className="order-page-scroll">
         <Box className="order-status-card">
           <Typography className="status-subtitle">Order Status: {order.status}</Typography>
-          <Typography className="arriving-text">Payment: {order.paymentStatus}</Typography>
+          <Typography className="arriving-text">Payment: {paymentError || paymentStatus}</Typography>
 
           <Box className="time-pill">
             <Typography className="time-pill-text">{order.status}</Typography>
@@ -91,13 +113,13 @@ const OrderPage = () => {
 
         <Box className="payment-due-card">
           <Box className="due-card-left">
-            <Box className="wallet-icon-box">{paymentPaid ? 'OK' : 'PAY'}</Box>
+            <Box className="wallet-icon-box">{paymentSuccessful ? 'OK' : 'PAY'}</Box>
             <Box className="due-text-box">
-              <Typography className="due-title">{paymentPaid ? 'Payment Successful' : 'Payment Due'}</Typography>
-              <Typography className="due-desc">{paymentPaid ? `Paid using ${order.paymentMethod || 'selected method'}` : 'Payment is awaiting confirmation'}</Typography>
+              <Typography className="due-title">{paymentSuccessful ? 'Payment Successful' : paymentStatus === 'FAILED' ? 'Payment Failed' : paymentStatus === 'REFUNDED' ? 'Payment Refunded' : 'Payment Pending'}</Typography>
+              <Typography className="due-desc">{paymentError || (paymentSuccessful ? `Paid using ${payment?.paymentMethod || 'selected method'}` : paymentStatus === 'REFUNDED' ? 'Refund confirmed by Payment Service' : 'Payment is awaiting confirmation')}</Typography>
             </Box>
           </Box>
-          {!paymentPaid && <Button variant="contained" className="due-pay-btn" onClick={() => navigate('/payment-options')}>Pay {formatCurrency(grandTotal)}</Button>}
+          {!paymentSuccessful && paymentStatus !== 'REFUNDED' && <Button variant="contained" className="due-pay-btn" onClick={() => navigate('/payment-options', { state: { orderId: order.id, order } })}>Pay {formatCurrency(grandTotal)}</Button>}
         </Box>
 
         <Box className="order-address-card">

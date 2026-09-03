@@ -6,7 +6,11 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      '/api/payments': 'http://127.0.0.1:3001',
+      '/payments': {
+        target: 'http://127.0.0.1:8092',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/payments/, ''),
+      },
       '/org-access': {
         target: 'http://127.0.0.1:8083',
         changeOrigin: true,

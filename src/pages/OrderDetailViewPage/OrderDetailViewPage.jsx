@@ -12,6 +12,7 @@ import ProductCard from '../../components/ProductCard/ProductCard';
 import { AppContext } from '../../context/AppContext';
 import pickleJarImg from '../../assets/images/pickel-removebg-preview.png';
 import { cancelOrder, getOrder, getOrderItems, isOrderServiceUnavailable, normalizeOrder } from '../../services/orderApi';
+import { getPaymentByOrder, isPaymentServiceUnavailable, normalizePayment } from '../../services/paymentApi';
 import './OrderDetailViewPage.css';
 
 const formatAddress = (address) => address ? [address.addressLine1, address.city, address.state, address.country, address.postalCode].filter(Boolean).join(', ') : '';
@@ -26,6 +27,8 @@ const OrderDetailViewPage = () => {
   const [error, setError] = useState('');
   const [unavailable, setUnavailable] = useState(false);
   const [canceling, setCanceling] = useState(false);
+  const [payment, setPayment] = useState(null);
+  const [paymentError, setPaymentError] = useState('');
   const requestedOrderId = routeOrderId || location.state?.orderId || location.state?.order?.id;
 
   useEffect(() => {
@@ -58,6 +61,24 @@ const OrderDetailViewPage = () => {
     return () => { ignore = true; window.clearTimeout(timer); };
   }, [requestedOrderId]);
 
+  useEffect(() => {
+    if (!requestedOrderId) return undefined;
+    let ignore = false;
+    Promise.resolve().then(() => {
+      if (!ignore) setPaymentError('');
+      return getPaymentByOrder(requestedOrderId);
+    })
+      .then((payload) => {
+        if (!ignore) setPayment(normalizePayment(payload));
+      })
+      .catch((apiError) => {
+        if (ignore) return;
+        setPayment(null);
+        if (apiError.status !== 404) setPaymentError(isPaymentServiceUnavailable(apiError) ? 'Payment Service is unavailable.' : apiError.message);
+      });
+    return () => { ignore = true; };
+  }, [requestedOrderId]);
+
   const handleCancel = async () => {
     if (!order?.id) return;
     setCanceling(true);
@@ -85,6 +106,7 @@ const OrderDetailViewPage = () => {
   const image = firstItem.image || pickleJarImg;
   const customer = order.customer || user || {};
   const deliveryAddress = formatAddress(order.shippingAddress);
+  const paymentStatus = payment?.status || order.paymentStatus || 'PENDING';
   const suggestions = catalogProducts.filter((product) => product.productId !== firstItem.productId).slice(0, 3);
   const downloadInvoice = () => {
     const invoice = [`Invoice: ${order.id}`, `Date: ${date}`, `Amount: ${formatCurrency(price)}`, `Status: ${order.status}`].join('\n');
@@ -146,7 +168,7 @@ const OrderDetailViewPage = () => {
             <Typography className="total-price-label">Total Order Price</Typography>
             <Box className="total-price-value-wrap"><Typography className="total-price-val">{formatCurrency(price)}</Typography><KeyboardArrowDownIcon className="arrow-down" /></Box>
           </Box>
-          <Box className="payment-method-bar"><span className="upi-icon">PAY</span><Typography className="upi-text">{order.paymentStatus}</Typography></Box>
+          <Box className="payment-method-bar"><span className="upi-icon">PAY</span><Typography className="upi-text">{paymentError || paymentStatus}</Typography></Box>
           <Button variant="outlined" fullWidth className="get-invoice-btn" onClick={downloadInvoice}>Get Invoice</Button>
           {!['DELIVERED', 'CANCELLED'].includes(order.status) && <Button color="error" fullWidth disabled={canceling} onClick={handleCancel}>{canceling ? 'Cancelling...' : 'Cancel Order'}</Button>}
         </Box>

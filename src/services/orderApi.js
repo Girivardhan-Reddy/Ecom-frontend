@@ -1,7 +1,7 @@
 import { apiRequest } from './apiClient';
 
 export const ORDER_STATUSES = ['CREATED', 'CONFIRMED', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED'];
-export const PAYMENT_STATUSES = ['PENDING', 'PAID', 'FAILED', 'REFUNDED'];
+export const PAYMENT_STATUSES = ['PENDING', 'SUCCESS', 'FAILED', 'REFUNDED'];
 
 const ORDER_BASE_URL = (import.meta.env.VITE_ORDER_URL || '/order').replace(/\/$/, '');
 

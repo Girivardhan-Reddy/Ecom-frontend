@@ -74,6 +74,7 @@ export const adaptImage = (image, productId) => ({
 export const adaptStoreProduct = (storeProduct) => ({
   id: storeProduct?.id || storeProduct?.mappingId || storeProduct?.storeProductId || null,
   storeId: storeProduct?.storeId || storeProduct?.store?.id || null,
+  storeName: storeProduct?.storeName || storeProduct?.store?.name || '',
   productId: storeProduct?.productId || storeProduct?.product?.id || null,
   product: storeProduct?.product ? adaptProduct(storeProduct.product) : null,
   available: storeProduct?.available ?? true,

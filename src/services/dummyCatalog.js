@@ -110,6 +110,7 @@ export const dummyStoreProducts = [
 ].map((productId) => ({
   id: `store-gachibowli-${productId}`,
   storeId: 'store-gachibowli',
+  storeName: 'Thejo Gachibowli Store',
   productId,
   available: true,
   status: 'ACTIVE',

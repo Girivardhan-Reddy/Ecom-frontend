@@ -21,10 +21,13 @@ const inventoryStatus = (value) => {
 
 export const adaptInventory = (inventory, context = {}) => {
   const stores = context.stores || [];
+  const products = context.products || [];
   const store = stores.find((item) => item.id === inventory?.storeId);
   const status = inventoryStatus(inventory?.status);
   const productId = inventory?.productId || null;
   const variantId = inventory?.variantId ?? null;
+  const product = products.find((item) => item.productId === productId || item.id === productId);
+  const variant = product?.variants?.find((item) => item.variantId === variantId || item.id === variantId);
   const storeId = inventory?.storeId || null;
   const availableQuantity = numberValue(inventory?.availableQuantity);
   const reservedQuantity = numberValue(inventory?.reservedQuantity);
@@ -42,8 +45,8 @@ export const adaptInventory = (inventory, context = {}) => {
     createdAt: inventory?.createdAt || null,
     updatedAt: inventory?.updatedAt || null,
     version: inventory?.version,
-    name: productId || 'Inventory record',
-    sku: variantId || 'Product-level',
+    name: product?.name || product?.title || productId || 'Inventory record',
+    sku: variant?.sku || variant?.label || variant?.name || variantId || 'Product-level',
     store: store?.name || storeId || '',
     location: store?.location || '',
     stock: availableQuantity,

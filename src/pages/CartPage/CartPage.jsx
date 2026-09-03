@@ -13,12 +13,10 @@ import { hasCompleteProfile } from '../../utils/profileCompletion';
 
 const CartPage = () => {
   const navigate = useNavigate();
-  const { cartItems, updateQuantity, removeFromCart, deliveryAddress, saveItemForLater, savedForLater, restoreSavedItem, formatCurrency, user, addresses, catalogProducts, catalogItemKey } = useContext(AppContext);
+  const { cartItems, updateQuantity, removeFromCart, clearCart, deliveryAddress, saveItemForLater, savedForLater, restoreSavedItem, formatCurrency, cartTotal, cartLoading, cartError, cartUnavailable, user, addresses, catalogProducts, catalogItemKey } = useContext(AppContext);
   const goToCheckout = () => navigate(hasCompleteProfile(user, addresses) ? '/checkout' : '/profile', { state: { completeProfile: true, returnTo: '/checkout' } });
 
-  const itemTotal = cartItems.reduce((acc, item) => acc + item.price * item.quantity, 0);
-  const handlingFee = cartItems.length > 0 ? 5 : 0;
-  const grandTotal = itemTotal + handlingFee;
+  const grandTotal = cartTotal;
 
   const youMayAlsoLike = catalogProducts.filter((product) => !cartItems.some((item) => item.productId === product.productId)).slice(0, 3);
 
@@ -41,6 +39,8 @@ const CartPage = () => {
 
       {/* Main Scroll Content */}
       <Box className="cart-page-scroll">
+        {cartLoading && <Typography role="status" sx={{ p: 2 }}>Updating cart...</Typography>}
+        {cartError && <Typography role="alert" color={cartUnavailable ? 'error' : 'text.secondary'} sx={{ p: 2 }}>{cartError}</Typography>}
         {cartItems.length === 0 ? (
           <Box className="empty-cart-page">
             <Typography variant="h6" color="textSecondary">
@@ -56,6 +56,9 @@ const CartPage = () => {
           </Box>
         ) : (
           <Box className="cart-items-container">
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
+              <Button color="error" onClick={clearCart} disabled={cartLoading}>Clear cart</Button>
+            </Box>
             {cartItems.map((item, idx) => (
               <Box key={idx} className="cart-slot-card">
                 <Box className="slot-banner">
@@ -118,17 +121,12 @@ const CartPage = () => {
 
               <Box className="bill-data-row">
                 <Typography className="bill-item-label">Item total</Typography>
-                <Typography className="bill-item-value">{formatCurrency(itemTotal)}</Typography>
+                <Typography className="bill-item-value">{formatCurrency(grandTotal)}</Typography>
               </Box>
 
               <Box className="bill-data-row">
                 <Typography className="bill-item-label">Delivery Fee</Typography>
                 <Typography className="bill-item-free">Free</Typography>
-              </Box>
-
-              <Box className="bill-data-row">
-                <Typography className="bill-item-label">Handling Fee</Typography>
-                <Typography className="bill-item-value">{formatCurrency(handlingFee)}</Typography>
               </Box>
 
               <Box className="grand-total-row">

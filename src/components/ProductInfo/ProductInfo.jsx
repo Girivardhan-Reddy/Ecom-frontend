@@ -100,7 +100,7 @@ const ProductInfo = () => {
   const effectiveVariantId = variantOptions.some((variant) => (variant.variantId || variant.id) === selectedVariantId) ? selectedVariantId : variantOptions[0]?.variantId || variantOptions[0]?.id || '';
   const selectedVariant = variantOptions.find((variant) => (variant.variantId || variant.id) === effectiveVariantId) || variantOptions[0];
   const selectedWeight = selectedVariant?.label || selectedVariant?.weight || product.weight || '';
-  const isOutOfStock = product.active === false || selectedVariant?.active === false || !selectedVariant;
+  const isOutOfStock = product.active === false || selectedVariant?.active === false || (variantOptions.length > 0 && !selectedVariant);
 
   const bestSellers = catalogProducts.filter((item) => item.productId !== product.productId).slice(0, 3);
   const productImages = [product.image || pickleJarImg, ...(product.gallery || [])].filter((image, index, values) => image && values.indexOf(image) === index);
@@ -135,7 +135,7 @@ const ProductInfo = () => {
     addToCart({
       ...product,
       productId: product.productId || product.id,
-      variantId: selectedVariant?.variantId || selectedVariant?.id,
+      variantId: selectedVariant?.variantId ?? selectedVariant?.id ?? null,
       selectedVariant,
       title: product.title,
       weight: selectedWeight,

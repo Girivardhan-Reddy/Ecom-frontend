@@ -8,9 +8,7 @@ import './CartDrawer.css';
 
 const CartDrawer = () => {
   const navigate = useNavigate();
-  const { isCartOpen, closeCart, cartItems, updateQuantity } = useContext(AppContext);
-
-  const itemTotal = cartItems.reduce((acc, item) => acc + item.price * item.quantity, 0);
+  const { isCartOpen, closeCart, cartItems, updateQuantity, clearCart, cartTotal, cartLoading, cartError, cartUnavailable } = useContext(AppContext);
 
   const handleLoginProceed = () => {
     closeCart();
@@ -36,6 +34,8 @@ const CartDrawer = () => {
         </Box>
 
         {/* Content */}
+        {cartLoading && <Typography role="status" sx={{ px: 2, py: 1 }}>Updating cart...</Typography>}
+        {cartError && <Typography role="alert" color={cartUnavailable ? 'error' : 'text.secondary'} sx={{ px: 2, py: 1 }}>{cartError}</Typography>}
         {cartItems.length === 0 ? (
           <Box className="empty-cart-container">
             <Box className="empty-cart-card">
@@ -61,6 +61,9 @@ const CartDrawer = () => {
           <>
             {/* Scrollable Content */}
             <Box className="cart-content-scroll">
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end', px: 2 }}>
+                <Button color="error" onClick={clearCart} disabled={cartLoading}>Clear cart</Button>
+              </Box>
               {/* Cart Items Section */}
               <Box className="cart-section delivery-section">
                 <Box className="cart-items-list">
@@ -122,7 +125,7 @@ const CartDrawer = () => {
 
                 <Box className="bill-row total-row">
                   <Typography className="bill-label">Item Total</Typography>
-                  <Typography className="bill-value">â‚¹{itemTotal}</Typography>
+                  <Typography className="bill-value">{new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(cartTotal)}</Typography>
                 </Box>
 
                 <Box className="bill-note-card">

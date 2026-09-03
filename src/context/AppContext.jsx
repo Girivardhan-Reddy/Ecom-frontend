@@ -1,9 +1,11 @@
 import { createContext, useState, useEffect } from 'react';
 import { reverseGeocodeOpenStreetMap } from '../services/openStreetMapService';
 import { customerProfileService } from '../services/customerProfileService';
+import { collectionStore } from '../services/localDataService';
 import { getProducts, getCategories, getCategoryProducts } from '../services/catalogApi';
 import { adaptProductList, adaptCategoryList } from '../services/catalogAdapter';
 import { dummyCatalogEnabled, dummyCategories, filterDummyProducts } from '../services/dummyCatalog';
+import { addCartItem, calculateCartTotal, clearCartItems, createCart, getActiveCart, removeCartItem, updateCartItem } from '../services/cartApi';
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const AppContext = createContext();
@@ -14,10 +16,11 @@ export const AppProvider = ({ children }) => {
     return saved === 'true';
   });
 
-  const [cartItems, setCartItems] = useState(() => {
-    const saved = localStorage.getItem('cartItems');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [cartItems, setCartItems] = useState([]);
+  const [activeCart, setActiveCart] = useState(null);
+  const [cartLoading, setCartLoading] = useState(false);
+  const [cartError, setCartError] = useState('');
+  const [cartUnavailable, setCartUnavailable] = useState(false);
 
   const [user, setUser] = useState(() => {
     const saved = localStorage.getItem('user');
@@ -50,37 +53,82 @@ export const AppProvider = ({ children }) => {
   );
   const [showLocationModal, setShowLocationModal] = useState(false);
 
-  const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
+  const cartCount = cartItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+  const cartTotal = Number(activeCart?.totalAmount ?? 0);
 
   const resolveProductIdentity = (product) => {
     const variant = product?.variant || product?.selectedVariant || product?.variants?.[0] || {};
     return {
       productId: product?.productId || product?.id || variant?.productId || null,
-      variantId: product?.variantId || variant?.variantId || variant?.id || null,
+      variantId: product?.variantId ?? variant?.variantId ?? variant?.id ?? null,
     };
   };
 
   const sameCatalogItem = (left, right) =>
-    Boolean(left?.productId && left?.variantId && right?.productId && right?.variantId && left.productId === right.productId && left.variantId === right.variantId);
+    Boolean(left?.productId && right?.productId && left.productId === right.productId && (left.variantId ?? null) === (right.variantId ?? null));
 
-  const catalogItemKey = (item) => `${item?.productId || ''}:${item?.variantId || ''}`;
+  const catalogItemKey = (item) => `${item?.productId || ''}:${item?.variantId ?? 'product'}`;
+
+  const adaptCartItem = (item) => ({
+    ...item,
+    id: item?.id || null,
+    productId: item?.productId || null,
+    variantId: item?.variantId ?? null,
+    productName: item?.productName || 'Product',
+    quantity: Number(item?.quantity || 0),
+    unitPrice: Number(item?.unitPrice || 0),
+    totalPrice: Number(item?.totalPrice ?? Number(item?.unitPrice || 0) * Number(item?.quantity || 0)),
+    title: item?.productName || 'Product',
+    price: Number(item?.unitPrice || 0),
+    weight: item?.variantId == null ? 'Product-level item' : String(item.variantId),
+  });
+
+  const cartItemsFromResponse = (cart) => {
+    const items = Array.isArray(cart?.items) ? cart.items : Array.isArray(cart?.cartItems) ? cart.cartItems : [];
+    return items.map(adaptCartItem);
+  };
+
+  const applyCartResponse = (cart) => {
+    setActiveCart(cart || null);
+    setCartItems(cartItemsFromResponse(cart));
+    setCartUnavailable(false);
+    setCartError('');
+    return cart;
+  };
+
+  const isCartServiceUnavailable = (error) => error?.name === 'TypeError' || Number(error?.status) >= 500;
 
   const buildCartItem = (product) => {
     if (!product) return null;
     const identity = resolveProductIdentity(product);
-    if (!identity.productId || !identity.variantId) return null;
+    if (!identity.productId) return null;
     const variant = product.variant || product.selectedVariant || product.variants?.find((item) => (item.variantId || item.id) === identity.variantId) || product.variants?.[0] || {};
     return {
       ...product,
       id: identity.productId,
       productId: identity.productId,
       variantId: identity.variantId,
+      productName: product.productName || product.title || product.name || 'Product',
       title: product.title || product.name || 'Product',
       weight: product.weight || variant.label || variant.weight || variant.name || '',
-      price: Number(variant.price ?? product.price ?? 0),
+      unitPrice: Number(variant.price ?? product.unitPrice ?? product.price ?? 0),
+      price: Number(variant.price ?? product.unitPrice ?? product.price ?? 0),
       image: product.image || variant.image || '',
     };
   };
+
+  const resolveCartStoreId = (product) => {
+    if (product?.storeId) return product.storeId;
+    const selectedStore = localStorage.getItem('selectedStore');
+    const stores = collectionStore.list('stores');
+    const match = stores.find((store) => store.id === selectedStore || store.name === selectedStore);
+    return match?.id || stores.find((store) => store.status !== 'Inactive' && store.active !== false)?.id || null;
+  };
+
+  const cartScopeFor = (product) => ({
+    customerId: user?.id || null,
+    storeId: resolveCartStoreId(product),
+  });
 
   const loadCatalog = async () => {
     setCatalogLoading(true);
@@ -138,10 +186,6 @@ export const AppProvider = ({ children }) => {
     localStorage.setItem('isLoggedIn', isLoggedIn);
   }, [isLoggedIn]);
 
-  useEffect(() => {
-    localStorage.setItem('cartItems', JSON.stringify(cartItems));
-  }, [cartItems]);
-
   useEffect(() => localStorage.setItem('user', JSON.stringify(user)), [user]);
   useEffect(() => localStorage.setItem('wishlistItems', JSON.stringify(wishlistItems)), [wishlistItems]);
   useEffect(() => localStorage.setItem('addresses', JSON.stringify(addresses)), [addresses]);
@@ -183,38 +227,144 @@ export const AppProvider = ({ children }) => {
     setAddedToCartPopup(null);
   };
 
-  const addToCart = (product) => {
+  const loadCart = async (scopeProduct) => {
+    const scope = cartScopeFor(scopeProduct);
+    if (!scope.customerId || !scope.storeId) {
+      setActiveCart(null);
+      setCartItems([]);
+      setCartUnavailable(false);
+      setCartError(scope.customerId ? 'Select a store before using the cart.' : 'Log in to use your cart.');
+      return null;
+    }
+    setCartLoading(true);
+    try {
+      const cart = await getActiveCart(scope);
+      return applyCartResponse(cart);
+    } catch (error) {
+      setActiveCart(null);
+      setCartItems([]);
+      if (error.status === 404) {
+        setCartUnavailable(false);
+        setCartError('');
+        return null;
+      }
+      setCartUnavailable(isCartServiceUnavailable(error));
+      setCartError(error.message || 'Cart Service is unavailable.');
+      return null;
+    } finally {
+      setCartLoading(false);
+    }
+  };
+
+  const ensureCart = async (scopeProduct) => {
+    const scope = cartScopeFor(scopeProduct);
+    if (!scope.customerId) throw new Error('Log in to use your cart.');
+    if (!scope.storeId) throw new Error('Select a store before using the cart.');
+    if (activeCart?.id && activeCart.customerId === scope.customerId && activeCart.storeId === scope.storeId && activeCart.status === 'ACTIVE') return activeCart;
+    try {
+      const cart = await getActiveCart(scope);
+      return applyCartResponse(cart);
+    } catch (error) {
+      if (error.status !== 404) throw error;
+      const cart = await createCart({ customerId: scope.customerId, storeId: scope.storeId });
+      return applyCartResponse(cart);
+    }
+  };
+
+  useEffect(() => {
+    if (!isLoggedIn || !user?.id) {
+      return undefined;
+    }
+    let ignore = false;
+    const timer = window.setTimeout(() => {
+      if (ignore) return;
+      setCartLoading(true);
+      loadCart().finally(() => {
+        if (!ignore) setCartLoading(false);
+      });
+    }, 0);
+    return () => {
+      ignore = true;
+      window.clearTimeout(timer);
+    };
+  }, [isLoggedIn, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const refreshCartTotal = async (cartId) => {
+    const cart = await calculateCartTotal(cartId);
+    return applyCartResponse(cart);
+  };
+
+  const addToCart = async (product) => {
     const itemPayload = buildCartItem(product);
     if (!itemPayload) return;
+    setCartLoading(true);
+    try {
+      const cart = await ensureCart(product);
+      await addCartItem(cart.id, {
+        productId: itemPayload.productId,
+        variantId: itemPayload.variantId,
+        productName: itemPayload.productName,
+        quantity: 1,
+        unitPrice: itemPayload.unitPrice,
+      });
+      await refreshCartTotal(cart.id);
+      triggerAddedPopup(itemPayload);
+    } catch (error) {
+      setCartUnavailable(isCartServiceUnavailable(error));
+      setCartError(error.message || 'Cart Service is unavailable.');
+    } finally {
+      setCartLoading(false);
+    }
+  };
 
-    triggerAddedPopup(itemPayload);
-
-    setCartItems((prevItems) => {
-      const existing = prevItems.find((item) => sameCatalogItem(item, itemPayload));
-      if (existing) {
-        return prevItems.map((item) => {
-          return sameCatalogItem(item, itemPayload) ? { ...item, quantity: item.quantity + 1 } : item;
-        });
+  const updateQuantity = async (productId, variantId, delta) => {
+    const current = cartItems.find((item) => sameCatalogItem(item, { productId, variantId }));
+    if (!activeCart?.id || !current?.id) return;
+    const nextQuantity = Number(current.quantity || 0) + Number(delta || 0);
+    setCartLoading(true);
+    try {
+      if (nextQuantity <= 0) {
+        await removeCartItem(activeCart.id, current.id);
+      } else {
+        await updateCartItem(activeCart.id, current.id, { quantity: nextQuantity });
       }
-      return [...prevItems, { ...itemPayload, quantity: 1 }];
-    });
+      await refreshCartTotal(activeCart.id);
+    } catch (error) {
+      setCartUnavailable(isCartServiceUnavailable(error));
+      setCartError(error.message || 'Cart Service is unavailable.');
+    } finally {
+      setCartLoading(false);
+    }
   };
 
-  const updateQuantity = (productId, variantId, delta) => {
-    setCartItems((prevItems) =>
-      prevItems
-        .map((item) => {
-          if (sameCatalogItem(item, { productId, variantId })) {
-            const newQty = item.quantity + delta;
-            return newQty > 0 ? { ...item, quantity: newQty } : null;
-          }
-          return item;
-        })
-        .filter(Boolean)
-    );
+  const removeFromCart = async (productId, variantId) => {
+    const current = cartItems.find((item) => sameCatalogItem(item, { productId, variantId }));
+    if (!activeCart?.id || !current?.id) return;
+    setCartLoading(true);
+    try {
+      await removeCartItem(activeCart.id, current.id);
+      await refreshCartTotal(activeCart.id);
+    } catch (error) {
+      setCartUnavailable(isCartServiceUnavailable(error));
+      setCartError(error.message || 'Cart Service is unavailable.');
+    } finally {
+      setCartLoading(false);
+    }
   };
 
-  const removeFromCart = (productId, variantId) => setCartItems((items) => items.filter((item) => !sameCatalogItem(item, { productId, variantId })));
+  const clearCart = async () => {
+    if (!activeCart?.id) return;
+    setCartLoading(true);
+    try {
+      await clearCartItems(activeCart.id);
+      await refreshCartTotal(activeCart.id);
+    } catch (error) {
+      setCartUnavailable(isCartServiceUnavailable(error));
+      setCartError(error.message || 'Cart Service is unavailable.');
+    } finally {
+      setCartLoading(false);
+    }
+  };
   const toggleWishlist = (product) => setWishlistItems((items) => {
     const itemPayload = buildCartItem(product);
     if (!itemPayload) return items;
@@ -320,9 +470,15 @@ export const AppProvider = ({ children }) => {
         logout,
         cartCount,
         cartItems,
+        activeCart,
+        cartTotal,
+        cartLoading,
+        cartError,
+        cartUnavailable,
         addToCart,
         updateQuantity,
         removeFromCart,
+        clearCart,
         catalogProducts,
         catalogCategories,
         catalogLoading,

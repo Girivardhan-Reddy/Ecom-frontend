@@ -84,7 +84,7 @@ const ProductCard = ({ title, weight, price, image, ...details }) => {
             <Typography className="product-price">{formatCurrency(price)}</Typography>
           </Box>
           {quantity === 0 ? (
-            <Button variant="contained" className="add-btn" disabled={details.active === false || !productId || !variantId} onClick={handleAdd}>
+            <Button variant="contained" className="add-btn" disabled={details.active === false || !productId} onClick={handleAdd}>
               {details.active === false ? 'OUT' : 'ADD'}
             </Button>
           ) : (

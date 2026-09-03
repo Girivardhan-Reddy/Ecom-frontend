@@ -20,7 +20,7 @@ import CategoryCircle from '../../components/CategoryCircle/CategoryCircle';
 import CampaignCarousel from '../../components/CampaignCarousel/CampaignCarousel';
 import BottomNav from '../../components/BottomNav/BottomNav';
 import { AppContext } from '../../context/AppContext';
-import { collectionStore, orderStore } from '../../services/localDataService';
+import { collectionStore } from '../../services/localDataService';
 import { promotionApplies } from '../../services/promotionScope';
 import { getCategoryProducts, getProducts } from '../../services/catalogApi';
 import { adaptProductList } from '../../services/catalogAdapter';
@@ -93,7 +93,6 @@ const Home = () => {
   };
   const reviews = collectionStore.list('reviews').filter((review) => review.status === 'Approved' && review.active !== false);
   const stores = collectionStore.list('stores');
-  const orderCounts = orderStore.list().flatMap((order) => order.items || []).reduce((counts,item) => ({ ...counts,[item.id || item.title]:(counts[item.id || item.title] || 0)+Number(item.quantity || 1) }),{});
   const allMasterProducts = catalogProducts
     .filter((item) => item.status !== 'Inactive' && item.active !== false)
     .map((item) => {
@@ -104,7 +103,7 @@ const Home = () => {
       const pickup = product.pickup === true || product.pickup === 'Yes' || store?.pickup === 'Yes';
       const deliveryMinutes = Number(product.deliveryMinutes || 0);
       const basePrice = Number(product.price || product.offerPrice || product.basePrice || 0);
-      return { ...product, title: product.title || product.name || 'Product', subcategory:inferSubcategory(item), rating, pickup, deliveryMinutes, under30:deliveryMinutes > 0 && deliveryMinutes <= 30, offer:Number(item.discount || 0) > 0 || (Number(product.offerPrice) > 0 && Number(product.offerPrice) < basePrice), popularity:Number(orderCounts[product.id] || orderCounts[product.title] || 0) + (product.bestSeller === 'Yes' ? 100 : 0), newest:new Date(product.createdAt || 0).getTime() };
+      return { ...product, title: product.title || product.name || 'Product', subcategory:inferSubcategory(item), rating, pickup, deliveryMinutes, under30:deliveryMinutes > 0 && deliveryMinutes <= 30, offer:Number(item.discount || 0) > 0 || (Number(product.offerPrice) > 0 && Number(product.offerPrice) < basePrice), popularity:product.bestSeller === 'Yes' ? 100 : 0, newest:new Date(product.createdAt || 0).getTime() };
     });
   const sharedCategories = catalogCategories
     .filter((item) => item.status !== 'Inactive' && item.active !== false)

@@ -4,8 +4,9 @@ import PhotoCameraOutlinedIcon from '@mui/icons-material/PhotoCameraOutlined';
 import ThumbUpOutlinedIcon from '@mui/icons-material/ThumbUpOutlined';
 import VerifiedOutlinedIcon from '@mui/icons-material/VerifiedOutlined';
 import { useNavigate } from 'react-router-dom';
-import { collectionStore, loyaltyStore, notificationStore, orderStore, subscribeToLocalData } from '../../services/localDataService';
+import { collectionStore, loyaltyStore, notificationStore, subscribeToLocalData } from '../../services/localDataService';
 import { AppContext } from '../../context/AppContext';
+import { getCustomerOrderHistory, isOrderServiceUnavailable, normalizeOrder, ORDER_STATUSES } from '../../services/orderApi';
 
 const content = {
   notifications: { title: 'Notifications', empty: 'You have no notifications yet.' },
@@ -32,11 +33,39 @@ const CustomerFeaturePage = ({ type }) => {
   const [reviews, setReviews] = useState(() => collectionStore.list('reviews'));
   const [reviewImages, setReviewImages] = useState([]);
   const [reviewImage, setReviewImage] = useState('');
-  const [, refreshOrders] = useState(0);
+  const [trackingOrders, setTrackingOrders] = useState([]);
+  const [trackingLoading, setTrackingLoading] = useState(false);
+  const [trackingError, setTrackingError] = useState('');
   useEffect(() => subscribeToLocalData(({ key }) => {
-    if (!key || key === 'orders') refreshOrders((value) => value + 1);
     if (!key || key === 'notifications') setNotifications(notificationStore.list());
   }), []);
+  useEffect(() => {
+    if (type !== 'tracking' || !user?.id) return undefined;
+    let ignore = false;
+    const timer = window.setTimeout(() => {
+      if (!ignore) {
+        setTrackingLoading(true);
+        setTrackingError('');
+      }
+    }, 0);
+    Promise.resolve().then(() => getCustomerOrderHistory(user.id))
+      .then((payload) => {
+        if (!ignore) {
+          const rows = Array.isArray(payload) ? payload : payload?.orders || payload?.content || [];
+          setTrackingOrders(rows.map(normalizeOrder));
+        }
+      })
+      .catch((error) => {
+        if (!ignore) {
+          setTrackingOrders([]);
+          setTrackingError(isOrderServiceUnavailable(error) ? 'Order Service is unavailable.' : error.message);
+        }
+      })
+      .finally(() => {
+        if (!ignore) setTrackingLoading(false);
+      });
+    return () => { ignore = true; window.clearTimeout(timer); };
+  }, [type, user?.id]);
   const canReview = useMemo(() => rating > 0 && text.trim().length >= 5, [rating, text]);
   const productKey = selectedProduct?.id || selectedProduct?.sku || selectedProduct?.title || '';
   const productReviews = useMemo(() => reviews.filter((review) => !productKey || !review.productId || review.productId === productKey), [reviews, productKey]);
@@ -112,10 +141,10 @@ const CustomerFeaturePage = ({ type }) => {
           </Box>}
 
           {type === 'tracking' && <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-            {['Pending', 'Confirmed', 'Preparing', 'Ready for Pickup', 'Out for Delivery', 'Delivered'].map((item) => { const current=orderStore.list()[0];const stages=['Pending','Confirmed','Preparing','Ready for Pickup','Out for Delivery','Delivered'];return <Chip key={item} label={item} color={current && stages.indexOf(item)<=stages.indexOf(current.status) ? 'success' : 'default'} />; })}
+            {ORDER_STATUSES.map((item) => { const current=trackingOrders[0];return <Chip key={item} label={item} color={current && ORDER_STATUSES.indexOf(item)<=ORDER_STATUSES.indexOf(current.status) ? 'success' : 'default'} />; })}
           </Box>}
 
-          {type === 'tracking' && <Box sx={{ mt:2 }}>{orderStore.list().length === 0 ? <Typography>No orders to track.</Typography> : orderStore.list().slice(0,1).map((order) => <Box key={order.id}><Typography fontWeight={700}>{order.id}</Typography><Typography>Status: {order.status}</Typography><Typography>Estimated delivery: {order.status === 'Out for Delivery' ? '30 minutes' : 'Awaiting next update'}</Typography><Button onClick={() => { const location = JSON.parse(localStorage.getItem('deliveryLocation') || 'null'); setMessage(location ? `Partner location: ${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}` : 'Delivery partner has not shared a location yet.'); }}>Check Partner Location</Button></Box>)}</Box>}
+          {type === 'tracking' && <Box sx={{ mt:2 }}>{trackingLoading ? <Typography role="status">Loading tracking...</Typography> : trackingError ? <Typography role="alert" color="error">{trackingError}</Typography> : trackingOrders.length === 0 ? <Typography>No orders to track.</Typography> : trackingOrders.slice(0,1).map((order) => <Box key={order.id}><Typography fontWeight={700}>{order.id}</Typography><Typography>Status: {order.status}</Typography><Typography>Estimated delivery: {order.status === 'SHIPPED' ? 'Awaiting carrier update' : 'Awaiting next update'}</Typography><Button onClick={() => navigate(`/order-details/${encodeURIComponent(order.id)}`, { state: { orderId: order.id } })}>View Details</Button></Box>)}</Box>}
 
           {type === 'loyalty' && <Box sx={{ display:'grid',gap:2 }}><Typography variant="h5">{loyalty.points} points</Typography><Typography>Referral code: <strong>{loyalty.referralCode}</strong></Typography><Button variant="contained" onClick={() => { try { setLoyalty(loyaltyStore.redeem(100)); setMessage('₹10 gift voucher created.'); } catch (error) { setMessage(error.message); } }}>Redeem 100 Points</Button>{loyalty.vouchers.map((voucher) => <Chip key={voucher.id} label={`${voucher.code} — ₹${voucher.value}`} />)}</Box>}
 

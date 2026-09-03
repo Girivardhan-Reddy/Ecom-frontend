@@ -7,7 +7,7 @@ import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import { useNavigate } from 'react-router-dom';
 import { AppContext } from '../../context/AppContext';
 import pickleJarImg from '../../assets/images/pickel-removebg-preview.png';
-import { collectionStore, orderStore } from '../../services/localDataService';
+import { collectionStore } from '../../services/localDataService';
 import { getProducts } from '../../services/catalogApi';
 import { adaptProductList } from '../../services/catalogAdapter';
 import { dummyCatalogEnabled, filterDummyProducts } from '../../services/dummyCatalog';
@@ -50,7 +50,6 @@ const SearchPage = () => {
 
   const reviews = collectionStore.list('reviews').filter((review) => review.status === 'Approved' && review.active !== false);
   const stores = collectionStore.list('stores');
-  const orderCounts = orderStore.list().flatMap((order) => order.items || []).reduce((counts,item) => ({ ...counts,[item.id || item.title]:(counts[item.id || item.title] || 0)+Number(item.quantity || 1) }),{});
   const categories = catalogCategories.map((category) => category.name || category.title || category);
   const allProducts = (searchTerm.trim() ? apiProducts : catalogProducts)
     .map((product) => ({
@@ -69,7 +68,7 @@ const SearchPage = () => {
     const store=stores.find((item)=>item.name===product.store);
     const pickup=product.pickup === true || product.pickup === 'Yes' || store?.pickup === 'Yes';
     const deliveryMinutes=Number(product.deliveryMinutes || 0);
-    return { ...product,rating,ratingCount:productReviews.length,pickup,deliveryMinutes,under30:deliveryMinutes>0&&deliveryMinutes<=30,offer:Number(product.discount || 0)>0 || (Number(product.offerPrice)>0&&Number(product.offerPrice)<product.basePrice),popularity:Number(orderCounts[product.id] || orderCounts[product.title] || 0)+(product.bestSeller==='Yes'?100:0),newest:new Date(product.createdAt || 0).getTime() };
+    return { ...product,rating,ratingCount:productReviews.length,pickup,deliveryMinutes,under30:deliveryMinutes>0&&deliveryMinutes<=30,offer:Number(product.discount || 0)>0 || (Number(product.offerPrice)>0&&Number(product.offerPrice)<product.basePrice),popularity:product.bestSeller==='Yes'?100:0,newest:new Date(product.createdAt || 0).getTime() };
   });
   const filteredProducts = (searchTerm.trim()
     ? searchableProducts.filter((p) =>

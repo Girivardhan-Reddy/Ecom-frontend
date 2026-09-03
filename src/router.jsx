@@ -101,6 +101,10 @@ const router = createBrowserRouter([
         element: <OrderDetailViewPage />,
       },
       {
+        path: "order-details/:orderId",
+        element: <OrderDetailViewPage />,
+      },
+      {
         path: "saved-addresses",
         element: <SavedAddressesPage />,
       },
@@ -139,6 +143,10 @@ const router = createBrowserRouter([
       { path: "checkout", element: <CheckoutPage /> },
       {
         path: "order",
+        element: <OrderPage />,
+      },
+      {
+        path: "order/:orderId",
         element: <OrderPage />,
       },
       {

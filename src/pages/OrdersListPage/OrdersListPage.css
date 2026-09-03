@@ -174,25 +174,28 @@
   border-radius: 12px;
 }
 
-.status-pill-chip.delivered {
+.status-pill-chip.delivered,
+.status-pill-chip.confirmed {
   background-color: #ecfdf5;
   color: #059669;
   border: 1px solid #a7f3d0;
 }
 
-.status-pill-chip.cancelled {
+.status-pill-chip.cancelled,
+.status-pill-chip.failed {
   background-color: #fef2f2;
   color: #ef4444;
   border: 1px solid #fecaca;
 }
 
-.status-pill-chip.on-the-way {
+.status-pill-chip.shipped,
+.status-pill-chip.processing {
   background-color: #eff6ff;
   color: #2563eb;
   border: 1px solid #bfdbfe;
 }
 
-.status-pill-chip.returned {
+.status-pill-chip.created {
   background-color: #fff7ed;
   color: #ea580c;
   border: 1px solid #fed7aa;

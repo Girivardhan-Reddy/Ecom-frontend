@@ -19,7 +19,7 @@ import DeleteForeverOutlinedIcon from '@mui/icons-material/DeleteForeverOutlined
 import { useLocation, useNavigate } from 'react-router-dom';
 import { AppContext } from '../../context/AppContext';
 import { customerProfileService } from '../../services/customerProfileService';
-import { orderStore } from '../../services/localDataService';
+import { getCustomerOrderHistory, isOrderServiceUnavailable, normalizeOrder } from '../../services/orderApi';
 import './Profile.css';
 
 const Profile = () => {
@@ -36,7 +36,9 @@ const Profile = () => {
     gender: user?.gender || '',
     dateOfBirth: user?.dateOfBirth || '',
   });
-  const recentOrders = orderStore.list().slice(0, 1);
+  const [recentOrders, setRecentOrders] = useState([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [ordersError, setOrdersError] = useState('');
 
   const [feedback, setFeedback] = useState('');
   useEffect(() => {
@@ -48,6 +50,36 @@ const Profile = () => {
       if (error.status !== 404) setFeedback(error.message);
     });
   }, [setUser]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      return undefined;
+    }
+    let ignore = false;
+    const timer = window.setTimeout(() => {
+      if (!ignore) {
+        setOrdersLoading(true);
+        setOrdersError('');
+      }
+    }, 0);
+    Promise.resolve().then(() => getCustomerOrderHistory(user.id))
+      .then((payload) => {
+        if (!ignore) {
+          const rows = Array.isArray(payload) ? payload : payload?.orders || payload?.content || [];
+          setRecentOrders(rows.map(normalizeOrder).slice(0, 1));
+        }
+      })
+      .catch((error) => {
+        if (!ignore) {
+          setRecentOrders([]);
+          setOrdersError(isOrderServiceUnavailable(error) ? 'Order Service is unavailable.' : error.message);
+        }
+      })
+      .finally(() => {
+        if (!ignore) setOrdersLoading(false);
+      });
+    return () => { ignore = true; window.clearTimeout(timer); };
+  }, [user?.id]);
 
   const handleSaveProfile = async () => {
     if (!profileData.name.trim()) return setFeedback('Name is required.');
@@ -261,7 +293,7 @@ const Profile = () => {
               </Box>
               <Divider className="section-divider" />
               
-              {recentOrders.length === 0 ? <Typography sx={{ color: '#64748b' }}>No recent orders.</Typography> : recentOrders.map((order) => <Box className="order-card" key={order.id} onClick={() => navigate('/order-details', { state: { order } })} style={{ cursor: 'pointer' }}>
+              {ordersLoading ? <Typography role="status" sx={{ color: '#64748b' }}>Loading recent orders...</Typography> : ordersError ? <Typography role="alert" sx={{ color: '#b45309' }}>{ordersError}</Typography> : recentOrders.length === 0 ? <Typography sx={{ color: '#64748b' }}>No recent orders.</Typography> : recentOrders.map((order) => <Box className="order-card" key={order.id} onClick={() => navigate(`/order-details/${encodeURIComponent(order.id)}`, { state: { orderId: order.id } })} style={{ cursor: 'pointer' }}>
                 <Box className="order-product-info">
                   <Box className="order-image-placeholder">Img</Box>
                   <Box className="order-details">
@@ -272,7 +304,7 @@ const Profile = () => {
                 </Box>
                 <Box className="order-status-price">
                   <Typography className="status-pill delivered">{order.status}</Typography>
-                  <Typography className="order-price">{formatCurrency(order.total)} <KeyboardArrowRightIcon fontSize="small" sx={{ ml: 1, color: '#666' }} /></Typography>
+                  <Typography className="order-price">{formatCurrency(order.totalAmount)} <KeyboardArrowRightIcon fontSize="small" sx={{ ml: 1, color: '#666' }} /></Typography>
                 </Box>
               </Box>)}
             </Box>

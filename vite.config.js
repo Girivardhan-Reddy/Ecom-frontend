@@ -41,6 +41,11 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/order/, ''),
       },
+      '/fulfillment': {
+        target: 'http://127.0.0.1:8084',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/fulfillment/, ''),
+      },
       '/alerts': {
         target: 'http://127.0.0.1:8082',
         changeOrigin: true,

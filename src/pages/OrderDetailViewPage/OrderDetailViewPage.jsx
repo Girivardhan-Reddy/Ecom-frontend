@@ -13,6 +13,8 @@ import { AppContext } from '../../context/AppContext';
 import pickleJarImg from '../../assets/images/pickel-removebg-preview.png';
 import { cancelOrder, getOrder, getOrderItems, isOrderServiceUnavailable, normalizeOrder } from '../../services/orderApi';
 import { getPaymentByOrder, isPaymentServiceUnavailable, normalizePayment } from '../../services/paymentApi';
+import FulfillmentTrackingPanel from '../../components/FulfillmentTrackingPanel/FulfillmentTrackingPanel';
+import { useFulfillmentTracking } from '../../hooks/useFulfillmentTracking';
 import './OrderDetailViewPage.css';
 
 const formatAddress = (address) => address ? [address.addressLine1, address.city, address.state, address.country, address.postalCode].filter(Boolean).join(', ') : '';
@@ -30,6 +32,7 @@ const OrderDetailViewPage = () => {
   const [payment, setPayment] = useState(null);
   const [paymentError, setPaymentError] = useState('');
   const requestedOrderId = routeOrderId || location.state?.orderId || location.state?.order?.id;
+  const fulfillmentTracking = useFulfillmentTracking(order?.id || requestedOrderId);
 
   useEffect(() => {
     if (!requestedOrderId) {
@@ -162,6 +165,8 @@ const OrderDetailViewPage = () => {
           <Box className="info-detail-row"><LocalPhoneOutlinedIcon className="info-row-icon" /><Box className="info-col"><Typography className="info-label-sub">Contact details</Typography><Typography className="info-value-bold">{customer.phone || 'Unavailable'}</Typography></Box></Box>
           <Box className="info-detail-row"><HomeOutlinedIcon className="info-row-icon" /><Box className="info-col"><Typography className="info-label-sub">Delivery Address</Typography><Typography className="info-value-bold">{deliveryAddress || 'Unavailable'}</Typography></Box></Box>
         </Box>
+
+        <FulfillmentTrackingPanel order={order} {...fulfillmentTracking} />
 
         <Box className="total-order-card">
           <Box className="price-top-row">

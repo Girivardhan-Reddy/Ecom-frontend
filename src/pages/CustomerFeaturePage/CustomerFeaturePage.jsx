@@ -7,6 +7,8 @@ import { useNavigate } from 'react-router-dom';
 import { collectionStore, loyaltyStore, notificationStore, subscribeToLocalData } from '../../services/localDataService';
 import { AppContext } from '../../context/AppContext';
 import { getCustomerOrderHistory, isOrderServiceUnavailable, normalizeOrder, ORDER_STATUSES } from '../../services/orderApi';
+import FulfillmentTrackingPanel from '../../components/FulfillmentTrackingPanel/FulfillmentTrackingPanel';
+import { useFulfillmentTracking } from '../../hooks/useFulfillmentTracking';
 
 const content = {
   notifications: { title: 'Notifications', empty: 'You have no notifications yet.' },
@@ -68,6 +70,8 @@ const CustomerFeaturePage = ({ type }) => {
   }, [type, user?.id]);
   const canReview = useMemo(() => rating > 0 && text.trim().length >= 5, [rating, text]);
   const productKey = selectedProduct?.id || selectedProduct?.sku || selectedProduct?.title || '';
+  const trackedOrder = trackingOrders[0] || null;
+  const fulfillmentTracking = useFulfillmentTracking(type === 'tracking' ? trackedOrder?.id : '');
   const productReviews = useMemo(() => reviews.filter((review) => !productKey || !review.productId || review.productId === productKey), [reviews, productKey]);
   const approvedReviews = useMemo(() => productReviews.filter((review) => review.status === 'Approved' && review.active !== false), [productReviews]);
   const averageRating = approvedReviews.length ? approvedReviews.reduce((sum,review) => sum + Number(review.rating || 0),0) / approvedReviews.length : 0;
@@ -141,10 +145,10 @@ const CustomerFeaturePage = ({ type }) => {
           </Box>}
 
           {type === 'tracking' && <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-            {ORDER_STATUSES.map((item) => { const current=trackingOrders[0];return <Chip key={item} label={item} color={current && ORDER_STATUSES.indexOf(item)<=ORDER_STATUSES.indexOf(current.status) ? 'success' : 'default'} />; })}
+            {ORDER_STATUSES.map((item) => { const current=trackedOrder;return <Chip key={item} label={item} color={current && ORDER_STATUSES.indexOf(item)<=ORDER_STATUSES.indexOf(current.status) ? 'success' : 'default'} />; })}
           </Box>}
 
-          {type === 'tracking' && <Box sx={{ mt:2 }}>{trackingLoading ? <Typography role="status">Loading tracking...</Typography> : trackingError ? <Typography role="alert" color="error">{trackingError}</Typography> : trackingOrders.length === 0 ? <Typography>No orders to track.</Typography> : trackingOrders.slice(0,1).map((order) => <Box key={order.id}><Typography fontWeight={700}>{order.id}</Typography><Typography>Status: {order.status}</Typography><Typography>Estimated delivery: {order.status === 'SHIPPED' ? 'Awaiting carrier update' : 'Awaiting next update'}</Typography><Button onClick={() => navigate(`/order-details/${encodeURIComponent(order.id)}`, { state: { orderId: order.id } })}>View Details</Button></Box>)}</Box>}
+          {type === 'tracking' && <Box sx={{ mt:2, display: 'grid', gap: 2 }}>{trackingLoading ? <Typography role="status">Loading orders...</Typography> : trackingError ? <Typography role="alert" color="error">{trackingError}</Typography> : !trackedOrder ? <Typography>No orders to track.</Typography> : <><Box><Typography fontWeight={700}>{trackedOrder.id}</Typography><Typography>Status: {trackedOrder.status}</Typography><Button onClick={() => navigate(`/order-details/${encodeURIComponent(trackedOrder.id)}`, { state: { orderId: trackedOrder.id } })}>View Details</Button></Box><FulfillmentTrackingPanel order={trackedOrder} {...fulfillmentTracking} /></>}</Box>}
 
           {type === 'loyalty' && <Box sx={{ display:'grid',gap:2 }}><Typography variant="h5">{loyalty.points} points</Typography><Typography>Referral code: <strong>{loyalty.referralCode}</strong></Typography><Button variant="contained" onClick={() => { try { setLoyalty(loyaltyStore.redeem(100)); setMessage('₹10 gift voucher created.'); } catch (error) { setMessage(error.message); } }}>Redeem 100 Points</Button>{loyalty.vouchers.map((voucher) => <Chip key={voucher.id} label={`${voucher.code} — ₹${voucher.value}`} />)}</Box>}
 

@@ -9,6 +9,8 @@ import pickleJarImg from '../../assets/images/pickel-removebg-preview.png';
 import splashImg from '../../assets/images/splash-image.png';
 import { getOrder, getOrderItems, isOrderServiceUnavailable, normalizeOrder } from '../../services/orderApi';
 import { getPaymentByOrder, isPaymentServiceUnavailable, normalizePayment } from '../../services/paymentApi';
+import FulfillmentTrackingPanel from '../../components/FulfillmentTrackingPanel/FulfillmentTrackingPanel';
+import { useFulfillmentTracking } from '../../hooks/useFulfillmentTracking';
 import './OrderPage.css';
 
 const OrderPage = () => {
@@ -23,6 +25,7 @@ const OrderPage = () => {
   const [payment, setPayment] = useState(null);
   const [paymentError, setPaymentError] = useState('');
   const requestedOrderId = routeOrderId || location.state?.orderId || location.state?.order?.id;
+  const fulfillmentTracking = useFulfillmentTracking(order?.id || requestedOrderId);
 
   useEffect(() => {
     if (!requestedOrderId) {
@@ -126,6 +129,8 @@ const OrderPage = () => {
           <LocationOnIcon className="location-pin-icon" />
           <Typography className="order-address-text"><strong>Delivery:</strong> {addressText || 'Address unavailable'}</Typography>
         </Box>
+
+        <FulfillmentTrackingPanel order={order} {...fulfillmentTracking} />
 
         <Box className="welcome-promo-card">
           <Box className="promo-left-col">

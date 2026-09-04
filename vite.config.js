@@ -7,7 +7,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/payments': {
-        target: 'http://127.0.0.1:8092',
+        target: 'http://127.0.0.1:3314',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/payments/, ''),
       },

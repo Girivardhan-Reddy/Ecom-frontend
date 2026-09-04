@@ -105,10 +105,18 @@ const PaymentOptions = () => {
 
       const processedPayment = normalizePayment({ ...createdPayment, ...(await processDemoPayment(createdPayment.paymentId, 'SUCCESS')) });
       setPayment(processedPayment);
-      const statusPayload = await getPaymentStatus(createdPayment.paymentId);
-      const confirmedStatus = typeof statusPayload === 'string' ? statusPayload : statusPayload?.status;
-      const confirmedPayment = normalizePayment({ ...processedPayment, ...(await getPayment(createdPayment.paymentId)) });
-      const orderPayment = await getPaymentByOrder(order.id).then(normalizePayment).catch(() => null);
+      const [statusResult, paymentResult, orderPaymentResult] = await Promise.allSettled([
+        getPaymentStatus(createdPayment.paymentId),
+        getPayment(createdPayment.paymentId),
+        getPaymentByOrder(order.id),
+      ]);
+      const statusPayload = statusResult.status === 'fulfilled' ? statusResult.value : null;
+      const confirmedStatus = (typeof statusPayload === 'string' ? statusPayload : statusPayload?.status) || processedPayment.status;
+      const confirmedPayment = normalizePayment({
+        ...processedPayment,
+        ...(paymentResult.status === 'fulfilled' ? paymentResult.value : {}),
+      });
+      const orderPayment = orderPaymentResult.status === 'fulfilled' ? normalizePayment(orderPaymentResult.value) : null;
       const latestPayment = orderPayment?.paymentId ? orderPayment : confirmedPayment;
       setPayment(latestPayment);
 

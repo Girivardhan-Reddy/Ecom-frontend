@@ -1,4 +1,7 @@
-import { Box, Chip, CircularProgress, Typography } from '@mui/material';
+import { Box, Button, Chip, CircularProgress, Typography } from '@mui/material';
+import Inventory2OutlinedIcon from '@mui/icons-material/Inventory2Outlined';
+import LocalShippingOutlinedIcon from '@mui/icons-material/LocalShippingOutlined';
+import RefreshOutlinedIcon from '@mui/icons-material/RefreshOutlined';
 import { customerDeliveryStatus, fulfillmentStatusLabel, fulfillmentTypeLabel, shipmentStatusLabel } from '../../utils/fulfillmentStatus';
 
 const formatDateTime = (value) => value ? new Date(value).toLocaleString() : '';
@@ -18,40 +21,50 @@ const LoadingLine = ({ children }) => (
   </Box>
 );
 
-const FulfillmentTrackingPanel = ({ order, fulfillment, shipment, trackingEvents, loading, errors }) => {
+const FulfillmentTrackingPanel = ({ order, fulfillment, shipment, trackingEvents = [], loading = {}, errors = {}, refresh }) => {
   const hasFulfillment = Boolean(fulfillment?.id);
   const hasShipment = Boolean(shipment?.id);
   const deliveryStatus = customerDeliveryStatus({ fulfillment, shipment, order });
+  const statusTone = ['Delivered', 'Cancelled', 'Failed', 'Returned'].includes(deliveryStatus) ? 'default' : 'success';
 
   return (
     <Box sx={{ bgcolor: 'white', border: '1px solid #dfe8e3', borderRadius: 2, p: 2.5, display: 'grid', gap: 2 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-        <Box>
-          <Typography variant="h6" fontWeight={800}>Fulfillment & Tracking</Typography>
-          <Typography variant="body2" color="text.secondary">Delivery progress from Fulfillment Service</Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+          <LocalShippingOutlinedIcon sx={{ color: '#075F40' }} />
+          <Box>
+            <Typography variant="h6" fontWeight={800}>Delivery Tracking</Typography>
+            <Typography variant="body2" color="text.secondary">{shipment?.trackingNumber ? `${shipment.carrier} ${shipment.trackingNumber}` : 'Shipment updates will appear here'}</Typography>
+          </Box>
         </Box>
-        <Chip label={deliveryStatus} color={['Delivered', 'Cancelled', 'Failed'].includes(deliveryStatus) ? 'default' : 'success'} />
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          {refresh && <Button size="small" variant="outlined" startIcon={<RefreshOutlinedIcon />} onClick={refresh} sx={{ borderColor: '#d5e5dc', color: '#075F40', textTransform: 'none' }}>Refresh</Button>}
+          <Chip label={deliveryStatus} color={statusTone} />
+        </Box>
       </Box>
 
       {loading.fulfillment && <LoadingLine>Loading fulfillment...</LoadingLine>}
       {errors.fulfillment && <Typography role="alert" color="error">{errors.fulfillment}</Typography>}
       {!loading.fulfillment && !errors.fulfillment && !hasFulfillment && (
-        <Typography color="text.secondary">Preparing fulfillment...</Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#64748b' }}>
+          <Inventory2OutlinedIcon fontSize="small" />
+          <Typography>Preparing your order for fulfillment.</Typography>
+        </Box>
       )}
 
       {hasFulfillment && (
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' }, gap: 1.25 }}>
           <Detail label="Fulfillment status" value={fulfillmentStatusLabel(fulfillment.status)} />
           <Detail label="Fulfillment type" value={fulfillmentTypeLabel(fulfillment.fulfillmentType, order?.deliveryMethod)} />
-          <Detail label="Fulfillment ID" value={fulfillment.id} />
-          <Detail label="Shipping address ID" value={fulfillment.shippingAddressId} />
+          <Detail label="Fulfillment reference" value={fulfillment.id} />
+          <Detail label="Address reference" value={fulfillment.shippingAddressId} />
         </Box>
       )}
 
       {loading.shipment && <LoadingLine>Loading shipment...</LoadingLine>}
       {errors.shipment && <Typography role="alert" color="error">{errors.shipment}</Typography>}
       {!loading.shipment && !errors.shipment && !hasShipment && (
-        <Typography color="text.secondary">Shipment not created yet. Tracking information will appear once the shipment is created.</Typography>
+        <Typography color="text.secondary">Shipment details will appear once packing is complete.</Typography>
       )}
 
       {hasShipment && (

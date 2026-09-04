@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   getFulfillmentByOrderId,
   getShipmentByOrderId,
@@ -22,6 +22,7 @@ export const useFulfillmentTracking = (orderId) => {
   const [trackingEvents, setTrackingEvents] = useState([]);
   const [loading, setLoading] = useState({ fulfillment: false, shipment: false, tracking: false });
   const [errors, setErrors] = useState({ fulfillment: '', shipment: '', tracking: '' });
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     if (!orderId) {
@@ -63,7 +64,7 @@ export const useFulfillmentTracking = (orderId) => {
       });
 
     return () => { ignore = true; };
-  }, [orderId]);
+  }, [orderId, refreshKey]);
 
   useEffect(() => {
     const shipmentId = shipment?.id || shipment?.shipmentId;
@@ -92,7 +93,9 @@ export const useFulfillmentTracking = (orderId) => {
       });
 
     return () => { ignore = true; };
-  }, [shipment?.id, shipment?.shipmentId]);
+  }, [shipment?.id, shipment?.shipmentId, refreshKey]);
 
-  return { fulfillment, shipment, trackingEvents, loading, errors };
+  const refresh = useCallback(() => setRefreshKey((value) => value + 1), []);
+
+  return { fulfillment, shipment, trackingEvents, loading, errors, refresh };
 };

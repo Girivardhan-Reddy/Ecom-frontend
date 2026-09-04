@@ -3,7 +3,7 @@ import { apiRequest } from './apiClient';
 export const ORDER_STATUSES = ['CREATED', 'CONFIRMED', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED'];
 export const PAYMENT_STATUSES = ['PENDING', 'SUCCESS', 'FAILED', 'REFUNDED'];
 
-const ORDER_BASE_URL = (import.meta.env.VITE_ORDER_URL || '/order').replace(/\/$/, '');
+const ORDER_BASE_URL = (import.meta.env.VITE_ORDER_URL || '/order-api').replace(/\/$/, '');
 
 const request = (path, options = {}) => apiRequest(ORDER_BASE_URL, path, options);
 

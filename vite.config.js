@@ -36,13 +36,13 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/cart/, ''),
       },
-      '/order': {
+      '/order-api': {
         target: 'http://127.0.0.1:3311',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/order/, ''),
+        rewrite: (path) => path.replace(/^\/order-api/, ''),
       },
       '/fulfillment': {
-        target: 'http://127.0.0.1:8084',
+        target: 'http://127.0.0.1:3315',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/fulfillment/, ''),
       },
